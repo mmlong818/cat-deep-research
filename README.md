@@ -85,7 +85,7 @@
 | 🎯 **Critic**（评审员） | 从完整性、准确性、深度、清晰性等 7 个维度对报告打分，并对照用户的研究问题、委托内容与中途补充指令检查报告是否满足要求 |
 | 📒 **Reconciler**（对账员） | 比对新旧声明，合并重复（含中英文同义表述），找出互相矛盾的声明对 |
 | 🔬 **FactChecker**（事实核查员） | 逐处联网裁决矛盾（胜出方 / 两方都不可靠），独立核实最多 8 条关键数字类声明，给出 0.0–1.0 置信度 |
-| ✔️ **ConclusionValidator**（结论验证员） | 验证结论的逻辑严密性、全面性与实用价值（5 项评分） |
+| ✔️ **ConclusionValidator**（结论验证员） | 验证结论的逻辑严密性、全面性与实用价值（5 项评分），并对照用户的研究问题、委托内容与中途补充指令判断结论是否回应了用户要求（遵循要求所作的取舍不扣「覆盖全面性」分，违背的写进 gaps / logic_issues） |
 
 ---
 
@@ -129,7 +129,7 @@ cat-deep-research/
 ├── research/                # 纯逻辑模块（不调用 LLM）
 │   ├── ledger.py            # 声明台账与引用检查规则
 │   ├── loop_policy.py       # 改进循环停止条件、最优稿棘轮与最终稿选择
-│   ├── directives.py        # 研究中途的用户补充要求：按批累积，注入研究员 / 事实核查员 / 分析师 / 写作者 / 评审员的提示词
+│   ├── directives.py        # 研究中途的用户补充要求：按批累积，注入研究员 / 事实核查员 / 分析师 / 写作者 / 评审员 / 结论验证员的提示词
 │   └── confidence.py        # 综合置信度加权计算
 │
 ├── api/                     # FastAPI Web 服务
@@ -442,7 +442,7 @@ Final Report (09_final.md, best draft without citation violations) + Confidence 
 | 🎯 **Critic** | Reviews on 7 dimensions: completeness, accuracy, depth, clarity, usefulness, sources, simplicity; also checks the report against the user's question, confirmed brief and mid-run instructions |
 | 📒 **Reconciler** | Compares new and existing claims, merges duplicates (including zh/en wording), finds contradicting claim pairs |
 | 🔬 **FactChecker** | Adjudicates each contradiction on the web (one side wins / neither is reliable) and independently verifies up to 8 key numeric claims (confidence 0.0–1.0) |
-| ✔️ **ConclusionValidator** | Validates logical rigor, completeness, and practical value of conclusions (5 scores) |
+| ✔️ **ConclusionValidator** | Validates logical rigor, completeness, and practical value of conclusions (5 scores); also judges whether the conclusions answer the user's question, confirmed brief and mid-run instructions (trade-offs made to follow them are not penalised as incomplete; violations go into gaps / logic_issues) |
 
 ---
 

@@ -44,7 +44,7 @@ class ImproveLoopMixin(PhasesMixin):
                 break
             review, review_file = reviewed
             score = self._record_review(state, current, review, review_file, cycle, policy)
-            validations[current] = self._validate(current, sv, fc, cycle)
+            validations[current] = self._validate(current, sv, fc, cycle, q)
             cv = validations[current]
             reason = stop_reason(policy, state, score, cv["average_score"] if cv else None,
                                  blockers=self._blockers(current))
@@ -98,12 +98,12 @@ class ImproveLoopMixin(PhasesMixin):
                   f"下一版基于第 {state.best_draft} 版改进", flush=True)
         return score
 
-    def _validate(self, draft: int, sv: dict, fc: dict | None, cycle: int) -> dict | None:
+    def _validate(self, draft: int, sv: dict, fc: dict | None, cycle: int, q: str) -> dict | None:
         print(f"\n🔬 结论验证（第 {draft} 版）", flush=True)
         draft_file = os.path.join(self._ws, "06_drafts", f"draft_{draft}.md")
         result = self._soft("结论验证", self.conclusion_validator.validate_conclusions,
                             self._ws, draft_file=draft_file,
-                            source_verification=sv, fact_check=fc, cycle=cycle)
+                            source_verification=sv, fact_check=fc, cycle=cycle, question=q)
         if result is None:
             return None
         cv = result[0]

@@ -97,19 +97,21 @@ class ConclusionValidatorTests(_Base):
         draft = self.put("06_drafts/draft_2.md", "结论正文")
         self.patch_call(VALIDATION)
         data, _ = ConclusionValidatorAgent().validate_conclusions(
-            self.ws, draft_file=draft,
+            self.ws, draft_file=draft, question="问题-MARKER",
             source_verification={"total_sources": 5, "summary": {"average_score": 80, "high_confidence_count": 2}},
             fact_check={"overall_confidence": 0.9})
         self.assertEqual(data["average_score"], 7.2)
         self.assertAlmostEqual(data["conclusion_confidence"], 0.8 * 0.25 + 0.9 * 0.35 + 0.72 * 0.40, places=3)
         self.assertIn("PLAN-MARKER", self.prompts[0])
+        self.assertIn("问题-MARKER", self.prompts[0])
         self.assertIn("结论正文", self.prompts[0])
 
     def test_missing_upstream_results_do_not_crash_and_latest_draft_found(self):
         self.put("06_drafts/draft_1.md", "old")
         self.put("06_drafts/draft_10.md", "NEWEST")
         self.patch_call(VALIDATION)
-        ConclusionValidatorAgent().validate_conclusions(self.ws, source_verification=None, fact_check=None)
+        ConclusionValidatorAgent().validate_conclusions(self.ws, source_verification=None, fact_check=None,
+                                                          question="问题")
         self.assertIn("NEWEST", self.prompts[0])
 
 

@@ -103,7 +103,7 @@ class FakeAgents:
         return data, path
 
     def validate_conclusions(self, ws, draft_file=None, source_verification=None,
-                             fact_check=None, cycle=1):
+                             fact_check=None, cycle=1, *, question):
         return {"average_score": self.conclusion_avg, "overall_verdict": "needs_improvement",
                 "conclusion_confidence": 0.7, "gaps": [], "improvement_instructions": ""}, ""
 

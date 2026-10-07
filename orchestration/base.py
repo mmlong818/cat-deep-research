@@ -27,10 +27,10 @@ from research.loop_ask import LoopAsk
 from tools.file_tools import append_to_log, is_workspace_deleted, read_json, write_file, write_json
 
 # 接收「用户补充要求」的智能体：研究员（检索）、事实核查员（只用于矛盾裁决；独立核实不经 LLMAgent.request，
-# 刻意不带任何先验材料）、分析师、写作者，以及评审员（只用来检查报告是否满足用户要求，评分标准不变，
-# 见 research.directives.REVIEW_GUIDE）。阶段1→2 的消息并入研究问题；来源验证员在阶段3→4 检查点之前已完成，
-# 对账员只做声明间比对，结论验证员按固定标准打分，均不注入。
-DIRECTED_ROLES = ("researcher", "fact_checker", "analyst", "writer", "critic")
+# 刻意不带任何先验材料）、分析师、写作者，以及评审员与结论验证员（只用来检查报告 / 结论是否满足用户要求，
+# 评分标准不变，见 research.directives.REVIEW_GUIDE / VALIDATION_GUIDE）。阶段1→2 的消息并入研究问题；
+# 来源验证员在阶段3→4 检查点之前已完成，对账员只做声明间比对，均不注入。
+DIRECTED_ROLES = ("researcher", "fact_checker", "analyst", "writer", "critic", "conclusion_validator")
 
 
 class _Interrupted(Exception):

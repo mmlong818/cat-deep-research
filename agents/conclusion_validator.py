@@ -81,12 +81,17 @@ class ConclusionValidatorAgent(LLMAgent):
                              source_verification: dict | None = None,
                              fact_check: dict | None = None,
                              registry: dict | None = None,
-                             cycle: int = 1) -> tuple:
-        """验证研究报告的结论质量，返回 (验证 dict, 文件路径)；失败抛 LLMError。"""
+                             cycle: int = 1, *, question: str) -> tuple:
+        """验证研究报告的结论质量，返回 (验证 dict, 文件路径)；
+        question 为写作者收到的同一份研究问题（含委托时确认的补充说明、研究开始前追加的指令），
+        用来判断结论是否回应了用户要求，不改变评分标准；失败抛 LLMError。"""
         output_file = os.path.join(workspace, "08_verification", "conclusion_validation.json")
         draft_file = draft_file or _find_latest_draft(os.path.join(workspace, "06_drafts"))
 
         prompt = f"""请对研究报告的结论进行全面验证（第 {cycle} 轮）。
+
+## 用户的研究问题与委托内容
+{question}
 
 ## 研究计划（原始问题与研究维度）
 {read_text(os.path.join(workspace, "03_plan.json")) or "（无）"}
@@ -102,7 +107,12 @@ class ConclusionValidatorAgent(LLMAgent):
 
 ## 要求
 重点关注结论章节，确认结论是否完整回答了研究计划中的原始问题，
-并对照来源质量和事实核查结果评估结论可信度。"""
+并对照来源质量和事实核查结果评估结论可信度。
+对照「用户的研究问题与委托内容」（其中的「补充说明」是委托时确认的研究目标、范围、排除内容与特别要求）\
+判断结论是否回应了用户要求：覆盖全面性按用户限定的范围衡量，\
+遵循用户要求所作的取舍（如聚焦某一方面而缩小范围）不算「覆盖全面性」不足，不要因此扣分；\
+违背或遗漏用户要求的，写进 gaps（指明是哪一条要求）或 logic_issues，并在 improvement_instructions 中给出改法；\
+这些要求只用于判断结论是否回应了用户要求，不改变 5 项评分标准。"""
 
         def finalize(data: dict) -> dict:
             return with_confidence(data, source_verification, fact_check)
