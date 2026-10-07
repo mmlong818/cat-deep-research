@@ -154,8 +154,8 @@ cat-deep-research/
 #### 1. 克隆项目
 
 ```bash
-git clone https://github.com/mmlong818/cat-research.git
-cd cat-research
+git clone https://github.com/mmlong818/cat-deep-research.git
+cd cat-deep-research
 ```
 
 #### 2. 安装依赖
@@ -451,8 +451,8 @@ Final Report (09_final.md, best draft without citation violations) + Confidence 
 #### 1. Clone
 
 ```bash
-git clone https://github.com/mmlong818/cat-research.git
-cd cat-research
+git clone https://github.com/mmlong818/cat-deep-research.git
+cd cat-deep-research
 ```
 
 #### 2. Install dependencies
@@ -686,6 +686,6 @@ MIT License · Free to use, modify, and distribute.
 
 <div align="center">
 
-Made with ❤️ · [Issues](https://github.com/mmlong818/cat-research/issues) · [Discussions](https://github.com/mmlong818/cat-research/discussions)
+Made with ❤️ · [Issues](https://github.com/mmlong818/cat-deep-research/issues) · [Discussions](https://github.com/mmlong818/cat-deep-research/discussions)
 
 </div>
