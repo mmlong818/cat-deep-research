@@ -1,5 +1,5 @@
 import type {
-  SessionMeta, LedgerView, AuditEntry, TokenUsage, PhaseLogTask,
+  SessionMeta, LedgerView, AuditEntry, TokenUsage, ReviewRound,
 } from "./types";
 
 const BASE = "/api";
@@ -12,7 +12,14 @@ const TOKEN =
 export const withToken = (url: string) =>
   TOKEN ? `${url}${url.includes("?") ? "&" : "?"}token=${encodeURIComponent(TOKEN)}` : url;
 
-async function req<T>(url: string, options?: RequestInit): Promise<T> {
+/** 接口错误：带 HTTP 状态码（429 = 已达并发上限，409 = 状态冲突），界面据此给出不同说明 */
+export class ApiError extends Error {
+  constructor(message: string, readonly status: number) {
+    super(message);
+  }
+}
+
+async function send(url: string, options?: RequestInit): Promise<Response> {
   const res = await fetch(url, {
     ...options,
     headers: {
@@ -23,9 +30,24 @@ async function req<T>(url: string, options?: RequestInit): Promise<T> {
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new Error(err.detail ?? res.statusText);
+    throw new ApiError(typeof err.detail === "string" ? err.detail : res.statusText, res.status);
   }
-  return res.json();
+  return res;
+}
+
+const req = <T,>(url: string, options?: RequestInit): Promise<T> => send(url, options).then((r) => r.json());
+
+/** 带令牌取文本（草稿在线查看）。 */
+export const fetchText = (url: string): Promise<string> => send(url).then((r) => r.text());
+
+/** 按可读的文件名另存（后端下载接口的 Content-Disposition 文件名会盖过 <a download>，所以先取回再存）。 */
+export async function saveText(url: string, filename: string) {
+  const blob = new Blob([await fetchText(url)], { type: "text/markdown;charset=utf-8" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 0);
 }
 
 // ── Research ──────────────────────────────────────────────────────────────
@@ -37,7 +59,7 @@ export interface ResearchStartOptions {
   max_cycles?: number;
   depth?: Depth;
   language?: "zh" | "en";
-  /** 改进循环中即时询问是否继续（研究页默认开；不传则后端按关闭处理） */
+  /** 改进循环中即时询问是否继续（委托台默认开；不传则后端按关闭处理） */
   ask_loop?: boolean;
   /** 本次临时指定提供方/模型；都不传则用设置里的默认配置档 */
   provider?: Provider;
@@ -72,7 +94,12 @@ export const research = {
 
   status: (taskId: string) => req<Record<string, unknown>>(`${BASE}/research/${taskId}/status`),
 
+  /** 停止：保留已有稿件与检查点，之后可从断点续办 */
   stop: (taskId: string) =>
+    req(`${BASE}/research/${taskId}/stop`, { method: "POST" }),
+
+  /** 删除没建成工作空间的任务记录（档案柜里只有任务编号的失败条目） */
+  deleteTask: (taskId: string) =>
     req(`${BASE}/research/${taskId}`, { method: "DELETE" }),
 
   pause: (taskId: string) =>
@@ -100,8 +127,6 @@ export const research = {
         return { sessions: list, total: Array.isArray(r) ? list.length : r.total ?? list.length };
       }),
 
-  stopAll: () => req(`${BASE}/research/stop-all`, { method: "POST" }),
-
   report: (sessionId: string) =>
     req<{ report: string; confidence_report: Record<string, unknown>; token_usage: TokenUsage | null }>(
       `${BASE}/sessions/${sessionId}/report`
@@ -114,6 +139,9 @@ export const research = {
     req(`${BASE}/sessions/${sessionId}`, { method: "DELETE" }),
 
   ledger: (sessionId: string) => req<LedgerView>(`${BASE}/sessions/${sessionId}/ledger`),
+
+  reviews: (sessionId: string) =>
+    req<{ reviews: ReviewRound[] }>(`${BASE}/sessions/${sessionId}/reviews`).then((r) => r.reviews ?? []),
 
   checkpoints: (sessionId: string) =>
     req<{ phases: string[]; checkpoints: { phase: string; created_at: string }[]; resume_from: string | null }>(
@@ -128,10 +156,60 @@ export const research = {
   audit: (sessionId: string) =>
     req<{ entries: AuditEntry[] }>(`${BASE}/sessions/${sessionId}/audit`),
 
-  phaseLog: (sessionOrTaskId: string) =>
-    req<{ tasks: PhaseLogTask[] }>(`${BASE}/sessions/${sessionOrTaskId}/phase-log`),
-
   health: () => req<{ status: string }>(`${BASE}/health`),
+};
+
+// ── Clarify（委托台：签发前和研究助理对话） ───────────────────────────────
+
+/** 澄清智能体整理出的委托摘要（agents/clarifier.py 的 CLARIFY_SCHEMA） */
+export interface ClarifySummary {
+  objective: string;
+  scope: string;
+  key_aspects: string[];
+  timeframe: string;
+  depth: string;
+  angle: string;
+  exclude: string;
+  search_hints: string[];
+  intent_type: string;
+  dimensions: { urgency: number; specificity: number; complexity: number };
+}
+
+export interface ClarifyTurn {
+  message: string;
+  summary: ClarifySummary;
+  ready: boolean;
+  confidence: number;
+}
+
+type ModelFields = Pick<ResearchStartOptions, "provider" | "core_model" | "support_model">;
+
+export interface ClarifyConfirmOptions extends ModelFields {
+  summary: ClarifySummary;
+  extra_note?: string;
+  min_cycles?: number;
+  max_cycles?: number;
+  depth?: Depth;
+  language?: "zh" | "en";
+  ask_loop?: boolean;
+}
+
+export const clarify = {
+  start: (question: string, model: ModelFields) =>
+    req<ClarifyTurn & { clarify_id: string }>(`${BASE}/clarify`, {
+      method: "POST",
+      body: JSON.stringify({ question, ...model }),
+    }),
+  reply: (clarifyId: string, message: string) =>
+    req<ClarifyTurn & { turns: number }>(`${BASE}/clarify/${clarifyId}/message`, {
+      method: "POST",
+      body: JSON.stringify({ message }),
+    }),
+  confirm: (clarifyId: string, opts: ClarifyConfirmOptions) =>
+    req<{ task_id: string }>(`${BASE}/clarify/${clarifyId}/confirm`, {
+      method: "POST",
+      body: JSON.stringify(opts),
+    }),
 };
 
 // ── Config ────────────────────────────────────────────────────────────────

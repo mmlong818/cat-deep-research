@@ -1,8 +1,11 @@
 import { useState, useEffect } from "react";
 import { Redirect, Route, Switch } from "wouter";
 import { Toaster } from "sonner";
-import Topbar from "./components/Topbar";
-import ResearchPage from "./pages/research/ResearchPage";
+import { Shell } from "./components/shell/Shell";
+import NewPage from "./pages/new/NewPage";
+import CasePage, { CaseIndex } from "./pages/case/CasePage";
+import CabinetPage from "./pages/cabinet/CabinetPage";
+import DossierPage from "./pages/dossier/DossierPage";
 import { research } from "./lib/api";
 
 export default function App() {
@@ -13,18 +16,20 @@ export default function App() {
   }, []);
 
   return (
-    <div data-tool="research" style={{ display: "flex", flexDirection: "column", height: "100vh", overflow: "hidden" }}>
+    <>
       <Toaster position="top-center" />
-      <Topbar online={online} />
-      <Switch>
-        <Route path="/"><Redirect to="/research" /></Route>
-        <Route path="/research" component={ResearchPage} />
-        <Route>
-          <div style={{ display: "flex", height: "100vh", alignItems: "center", justifyContent: "center", color: "var(--text3)" }}>
-            404
-          </div>
-        </Route>
-      </Switch>
-    </div>
+      <Shell online={online}>
+        <Switch>
+          <Route path="/"><Redirect to="/new" replace /></Route>
+          <Route path="/research"><Redirect to="/new" replace /></Route>
+          <Route path="/new"><NewPage /></Route>
+          <Route path="/case"><CaseIndex /></Route>
+          <Route path="/case/:taskId">{(p) => <CasePage key={p.taskId} taskId={p.taskId} />}</Route>
+          <Route path="/cabinet"><CabinetPage /></Route>
+          <Route path="/dossier/:sid/:tab?">{(p) => <DossierPage sid={p.sid} tab={p.tab} />}</Route>
+          <Route><div className="wrap"><div className="empty"><h3>404</h3></div></div></Route>
+        </Switch>
+      </Shell>
+    </>
   );
 }

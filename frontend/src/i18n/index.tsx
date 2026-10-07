@@ -1,10 +1,16 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import common from "./common";
-import research from "./research";
+import shell from "./shell";
+import dossier from "./dossier";
+import commission from "./commission";
+import caseLog from "./case";
+import cabinet from "./cabinet";
 
 // 每个模块：{ zh: {键: 中文}, en: {同样的键: 英文} }，键加模块前缀避免冲突
-const zh = { ...common.zh, ...research.zh };
-const en: Record<keyof typeof zh, string> = { ...common.en, ...research.en };
+const zh = { ...common.zh, ...shell.zh, ...dossier.zh, ...commission.zh, ...caseLog.zh, ...cabinet.zh };
+const en: Record<keyof typeof zh, string> = {
+  ...common.en, ...shell.en, ...dossier.en, ...commission.en, ...caseLog.en, ...cabinet.en,
+};
 
 export type Lang = "zh" | "en";
 export type TKey = keyof typeof zh;

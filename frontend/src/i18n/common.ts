@@ -1,12 +1,15 @@
 // 公共部分：顶栏、设置弹窗、全局提示
 const zh = {
-  "common.toolbox": "DJ的工具箱",
-  "common.tool.research": "深度研究",
   "common.online": "在线",
   "common.offline": "离线",
   "common.settings": "设置",
+  "common.back": "返回",
+  "common.close": "关闭",
+  "common.cancel": "取消",
+  "common.lang.zh": "中文",
+  "common.lang.en": "English",
+  "common.usageTip": "订阅模式下为等价 API 费用，并非实际扣费",
   "common.language": "语言",
-  "common.leaveConfirm": "当前有工作进行中，确定离开此页面？",
   "common.provider.claude": "Claude",
   "common.provider.openai": "GPT",
   "common.provider.zhipu": "智谱 GLM",
@@ -39,13 +42,16 @@ const zh = {
 };
 
 const en: Record<keyof typeof zh, string> = {
-  "common.toolbox": "DJ's Toolbox",
-  "common.tool.research": "Deep Research",
   "common.online": "Online",
   "common.offline": "Offline",
   "common.settings": "Settings",
+  "common.back": "Back",
+  "common.close": "Close",
+  "common.cancel": "Cancel",
+  "common.lang.zh": "中文",
+  "common.lang.en": "English",
+  "common.usageTip": "Under a subscription this is the equivalent API cost, not an actual charge",
   "common.language": "Language",
-  "common.leaveConfirm": "Work is in progress. Leave this page anyway?",
   "common.provider.claude": "Claude",
   "common.provider.openai": "GPT",
   "common.provider.zhipu": "Zhipu GLM",

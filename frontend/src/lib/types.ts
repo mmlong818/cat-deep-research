@@ -8,6 +8,11 @@ export interface SessionMeta {
   status?: string;             // running / completed / failed / stopped / interrupted / unknown
   final_score?: number | null;
   total_cycles?: number | null;
+  elapsed_seconds?: number | null;
+  cost_usd?: number | null;
+  final_draft?: number | null;        // 终稿取自第几版
+  best_scored_draft?: number | null;  // 评审分最高的一版（有引用违规时可能不是终稿）
+  citations?: { cited_claims: number | null; violations: number | null; numeric_coverage: number | null } | null;
   depth?: string | null;
   language?: string | null;
   provider?: string | null;    // 多模型之前的会话为空
@@ -16,40 +21,7 @@ export interface SessionMeta {
   current_phase?: string | null;
   phase_key?: string | null;
   error?: string | null;
-}
-
-export interface PhaseRecord {
-  phase_num: number;
-  phase: string;
-  phase_key: string | null;
-  status: string;
-  started_at: string;
-  finished_at: string | null;
-  error: string | null;
-}
-
-export interface PhaseLogTask {
-  task_id: string;
-  status: string;
-  error: string | null;
-  created_at: string;
-  replay_from: string | null;
-  phases: PhaseRecord[];
-}
-
-export type StepStatus = "pending" | "active" | "done" | "error";
-
-export interface PipelineStep {
-  key: string;
-  label: string;
-  emoji: string;
-  status: StepStatus;
-  duration?: number;
-}
-
-export interface LogLine {
-  type: "info" | "ok" | "warn" | "err" | "dim";
-  text: string;
+  confidence?: number | null;  // 置信度报告的综合可信度（0–1），没有报告时为空
 }
 
 export interface ConfidenceBreakdownItem {
@@ -67,13 +39,18 @@ export interface ConfidenceReport {
     conclusion_validity?: ConfidenceBreakdownItem;
   };
   disputed_claims?: { claim: string; confidence: string }[];
+  missing?: string[];
+  gaps?: { gap: string; importance: string; suggestion: string }[];
+  top_sources?: string[];
 }
 
 export interface LedgerClaim {
   id: string;
   text: string;
   status: "unchecked" | "supported" | "disputed" | "unverifiable" | "overruled" | "merged";
-  sources: { id: string; url: string; title: string }[];
+  note: string;
+  quotes: Record<string, string>;   // 来源编号 -> 原文引语
+  sources: { id: string; url: string; title: string; published: string }[];
 }
 
 export interface LedgerContradiction {
@@ -93,9 +70,19 @@ export interface AgentUsage { input: number; output: number; cost_usd: number }
 
 export interface TokenUsage {
   total_input: number;
+  total_cached_input?: number;
   total_output: number;
   cost_usd: number;
   by_agent: Record<string, AgentUsage>;
+}
+
+export interface ReviewRound {
+  cycle: number;
+  scores: Record<string, number>;
+  average_score: number | null;
+  strengths: string[];
+  critical_issues: { issue: string; severity?: string; suggestion?: string }[];
+  priority_improvements: string[];
 }
 
 export interface AuditEntry {
