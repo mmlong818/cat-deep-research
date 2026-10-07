@@ -63,9 +63,13 @@ class LLMAgent:
         self.max_turns = max_turns
         self.stream_callback: Callable[[str, dict], Any] | None = None  # 由 orchestrator 注入
         self.stop_event = None       # 由 orchestrator 注入
+        self.directives: Callable[[], str] | None = None  # 由 orchestrator 注入：返回「用户补充要求」小节，没有时为空串
 
     def request(self, prompt: str, schema: dict | None = None,
                 tools: Sequence[str] | None = None) -> LLMRequest:
+        """构造请求；注入了 directives 时在提示词末尾追加用户补充要求（没有补充要求时提示词不变）。"""
+        if self.directives:
+            prompt += self.directives()
         return LLMRequest(prompt=prompt, system=self.system_prompt, model=self.model,
                           effort=self.effort, schema=schema,
                           tools=self.tools if tools is None else tuple(tools),
