@@ -167,9 +167,10 @@ class ScriptedLLM:
 
 
 def run_pipeline(root: str, llm: ScriptedLLM, on_event=None, before_run=None, replay_from: str | None = None,
-                 workspace: str = ""):
+                 workspace: str = "", clarification: str | None = None):
     """在 root 下跑完整流程（或在 workspace 上从 replay_from 重放）；返回 (orchestrator, 事件列表)。
-    on_event(o, 事件名, 数据) 在每个进度事件时调用，可借此在检查点前注入用户消息。"""
+    on_event(o, 事件名, 数据) 在每个进度事件时调用，可借此在检查点前注入用户消息；
+    clarification 为委托时确认的补充说明（不传时与没有澄清的任务相同）。"""
     events: list = []
     holder: dict = {}
 
@@ -187,5 +188,5 @@ def run_pipeline(root: str, llm: ScriptedLLM, on_event=None, before_run=None, re
         if replay_from:
             o.replay(workspace, replay_from)
         else:
-            o.run(QUESTION, depth="standard")
+            o.run(QUESTION, depth="standard", clarification=clarification)
     return o, events

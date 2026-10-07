@@ -82,7 +82,7 @@
 | 🔎 **SourceVerifier**（来源验证员） | 对每个来源打 Tier 1–4 标签并给出 0–100 分域名评分，识别不可靠来源 |
 | 🧐 **Analyst**（分析师） | 整合原始资料，提炼关键发现，进行因果、趋势、对比分析 |
 | ✍️ **Writer**（写作者） | 撰写结构化研究报告，根据评审反馈多轮迭代优化 |
-| 🎯 **Critic**（评审员） | 从完整性、准确性、深度、清晰性等 7 个维度对报告打分 |
+| 🎯 **Critic**（评审员） | 从完整性、准确性、深度、清晰性等 7 个维度对报告打分，并对照用户的研究问题、委托内容与中途补充指令检查报告是否满足要求 |
 | 📒 **Reconciler**（对账员） | 比对新旧声明，合并重复（含中英文同义表述），找出互相矛盾的声明对 |
 | 🔬 **FactChecker**（事实核查员） | 逐处联网裁决矛盾（胜出方 / 两方都不可靠），独立核实最多 8 条关键数字类声明，给出 0.0–1.0 置信度 |
 | ✔️ **ConclusionValidator**（结论验证员） | 验证结论的逻辑严密性、全面性与实用价值（5 项评分） |
@@ -129,7 +129,7 @@ cat-deep-research/
 ├── research/                # 纯逻辑模块（不调用 LLM）
 │   ├── ledger.py            # 声明台账与引用检查规则
 │   ├── loop_policy.py       # 改进循环停止条件、最优稿棘轮与最终稿选择
-│   ├── directives.py        # 研究中途的用户补充要求：按批累积，注入研究员 / 事实核查员 / 分析师 / 写作者的提示词
+│   ├── directives.py        # 研究中途的用户补充要求：按批累积，注入研究员 / 事实核查员 / 分析师 / 写作者 / 评审员的提示词
 │   └── confidence.py        # 综合置信度加权计算
 │
 ├── api/                     # FastAPI Web 服务
@@ -262,8 +262,8 @@ workspace/session_20250322_143022/
 | `POST` | `/api/research/{id}/message` | 向正在运行的任务注入消息 |
 | `POST` | `/api/research/{id}/pause` | 暂停任务 |
 | `POST` | `/api/research/{id}/resume` | 恢复任务 |
-| `POST` | `/api/research/{id}/stop` | 停止任务 |
-| `DELETE` | `/api/research/{id}` | 停止并删除任务 |
+| `POST` | `/api/research/{id}/stop` | 停止任务（SSE 发 `stopped` 事件，与失败的 `error` 分开） |
+| `DELETE` | `/api/research/{id}` | 停止并删除任务（会话目录已不在时也删除任务记录；审计记录保留） |
 
 **会话管理**
 
@@ -275,7 +275,7 @@ workspace/session_20250322_143022/
 | `GET` | `/api/sessions/{id}/reviews` | 每轮评审：7 维评分、平均分、优点、关键问题、下一版要改的点 |
 | `GET` | `/api/sessions/{id}/phases` | 获取会话各阶段内容 |
 | `GET` | `/api/sessions/{id}/checkpoints` | 列出已完成阶段的检查点与默认续跑起点 |
-| `POST` | `/api/sessions/{id}/replay` | 从指定阶段重放（`{"from_phase": "improve"}`；省略则从断点续跑） |
+| `POST` | `/api/sessions/{id}/replay` | 从指定阶段重放（`{"from_phase": "improve"}`；省略则从断点续跑）；停止后旧线程还没退出时返回 409 |
 | `GET` | `/api/sessions/{id}/audit` | 会话审计日志（含所有重放任务） |
 | `DELETE` | `/api/sessions/{id}` | 删除会话及工作区 |
 
@@ -288,7 +288,7 @@ workspace/session_20250322_143022/
 |------|------|------|
 | `POST` | `/api/clarify` | 开始意图澄清会话 |
 | `POST` | `/api/clarify/{id}/message` | 继续澄清对话 |
-| `POST` | `/api/clarify/{id}/confirm` | 确认问题并启动研究 |
+| `POST` | `/api/clarify/{id}/confirm` | 确认问题并启动研究（可带改过的 `question` 与研究目标 `goal`） |
 
 **系统**
 
@@ -439,7 +439,7 @@ Final Report (09_final.md, best draft without citation violations) + Confidence 
 | 🔎 **SourceVerifier** | Assigns Tier 1–4 labels and 0–100 domain scores to each source; flags unreliable ones |
 | 🧐 **Analyst** | Synthesizes research into key findings; causal, trend, and comparative analysis |
 | ✍️ **Writer** | Writes structured research reports; iterates based on review feedback |
-| 🎯 **Critic** | Reviews on 7 dimensions: completeness, accuracy, depth, clarity, usefulness, sources, simplicity |
+| 🎯 **Critic** | Reviews on 7 dimensions: completeness, accuracy, depth, clarity, usefulness, sources, simplicity; also checks the report against the user's question, confirmed brief and mid-run instructions |
 | 📒 **Reconciler** | Compares new and existing claims, merges duplicates (including zh/en wording), finds contradicting claim pairs |
 | 🔬 **FactChecker** | Adjudicates each contradiction on the web (one side wins / neither is reliable) and independently verifies up to 8 key numeric claims (confidence 0.0–1.0) |
 | ✔️ **ConclusionValidator** | Validates logical rigor, completeness, and practical value of conclusions (5 scores) |
@@ -558,8 +558,8 @@ After running `python run_api.py`:
 | `POST` | `/api/research/{id}/message` | Inject a message into a running task |
 | `POST` | `/api/research/{id}/pause` | Pause a task |
 | `POST` | `/api/research/{id}/resume` | Resume a paused task |
-| `POST` | `/api/research/{id}/stop` | Stop a task |
-| `DELETE` | `/api/research/{id}` | Stop and delete a task |
+| `POST` | `/api/research/{id}/stop` | Stop a task (SSE emits `stopped`, separate from the `error` of a failure) |
+| `DELETE` | `/api/research/{id}` | Stop and delete a task (also when its session directory is already gone; audit entries are kept) |
 
 **Sessions**
 
@@ -571,7 +571,7 @@ After running `python run_api.py`:
 | `GET` | `/api/sessions/{id}/reviews` | Per-round reviews: 7 dimension scores, average, strengths, critical issues, priority improvements |
 | `GET` | `/api/sessions/{id}/phases` | Get all phase outputs for a session |
 | `GET` | `/api/sessions/{id}/checkpoints` | List completed-phase checkpoints and the default resume point |
-| `POST` | `/api/sessions/{id}/replay` | Replay from a phase (`{"from_phase": "improve"}`; omit to resume) |
+| `POST` | `/api/sessions/{id}/replay` | Replay from a phase (`{"from_phase": "improve"}`; omit to resume); 409 while a stopped run's thread is still exiting |
 | `GET` | `/api/sessions/{id}/audit` | Session audit log (including all replay tasks) |
 | `DELETE` | `/api/sessions/{id}` | Delete session and workspace |
 
@@ -584,7 +584,7 @@ After each phase (clarify → plan → research → sources → ledger → analy
 |--------|----------|-------------|
 | `POST` | `/api/clarify` | Start a clarification session |
 | `POST` | `/api/clarify/{id}/message` | Continue clarification dialog |
-| `POST` | `/api/clarify/{id}/confirm` | Confirm and start research |
+| `POST` | `/api/clarify/{id}/confirm` | Confirm and start research (optionally with an edited `question` and a `goal`) |
 
 **System**
 

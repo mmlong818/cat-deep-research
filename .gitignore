@@ -47,3 +47,5 @@ Thumbs.db
 
 # TypeScript 增量构建缓存
 frontend/tsconfig.tsbuildinfo
+*.db-shm
+*.db-wal

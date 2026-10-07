@@ -35,5 +35,6 @@ export function localIso(d = new Date()): string {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
 }
 
-/** 经澄清签发的研究，后端把委托摘要接在问题后面（api/app.py 拼的「补充说明：」段）；列表与标题只显示问题本身 */
+/** 兼容旧会话：问题与补充说明分开存之前，经澄清签发的研究把委托摘要接在问题后面（「补充说明：」段），
+ *  这些会话及其续办任务的问题里仍带着它；列表与标题只显示问题本身。新会话没有这一段，原样返回 */
 export const plainQuestion = (q: string) => q.split("\n\n补充说明：")[0];

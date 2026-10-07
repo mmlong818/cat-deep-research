@@ -143,6 +143,7 @@ const zh = {
   "case.agent.fact_checker": "事实核查员",
   "case.agent.analyst": "分析师",
   "case.agent.writer": "写作者",
+  "case.agent.critic": "评审员",
   "case.leave": "你可以离开这个页面。办完后卷宗会放在档案柜最上面；需要你签批时，标签页标题会提示。",
   "case.tally.title": "台账",
   "case.tally.meta": "随研究增长",
@@ -156,6 +157,7 @@ const zh = {
   "case.log.empty": "还没有事件。",
   "case.toast.failed": "没办成：{{m}}",
   "case.toast.resumed": "已从断点续办",
+  "case.toast.wrapping": "上一个线程还在收尾，请稍后再试",
 };
 
 const en: Record<keyof typeof zh, string> = {
@@ -302,6 +304,7 @@ const en: Record<keyof typeof zh, string> = {
   "case.agent.fact_checker": "fact-checker",
   "case.agent.analyst": "analyst",
   "case.agent.writer": "writer",
+  "case.agent.critic": "critic",
   "case.leave": "You can leave this page. The finished dossier goes to the top of the archive; when your sign-off is needed, the tab title says so.",
   "case.tally.title": "Ledger",
   "case.tally.meta": "Grows as research goes on",
@@ -315,6 +318,7 @@ const en: Record<keyof typeof zh, string> = {
   "case.log.empty": "No events yet.",
   "case.toast.failed": "That didn't work: {{m}}",
   "case.toast.resumed": "Resumed from the last checkpoint",
+  "case.toast.wrapping": "The previous run is still wrapping up; try again in a moment",
 };
 
 export default { zh, en };

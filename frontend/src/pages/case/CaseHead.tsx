@@ -9,7 +9,7 @@ import { N, rich } from "../../i18n/rich";
 import { clockTime, crId, dateShort, minutes, plainQuestion } from "../../lib/format";
 import { elapsedNow, runMode, type CaseState } from "../../lib/live/model";
 import { useNow } from "../../lib/live/store";
-import { research } from "../../lib/api";
+import { ApiError, research } from "../../lib/api";
 import { prefillDraft } from "../new/draft";
 import type { TaskInfo } from "./useCaseMeta";
 
@@ -44,7 +44,8 @@ export function Lede({ s }: { s: CaseState }) {
   return <p className="dateline">{rich(t("case.lede.running"), { stage: <strong>{stageLabel(t, s)}</strong>, m })}</p>;
 }
 
-/** 续办：用检查点找默认起点，POST /replay；要等后台线程退出（end）后才可以，免得两个线程写同一个工作空间 */
+/** 续办：用检查点找默认起点，POST /replay；要等后台线程退出（end）后才可以，免得两个线程写同一个工作空间。
+ *  刷新后连上的页面会先收到 end（任务已停），线程却可能还没退出：后端此时回 409，提示稍后再试 */
 function ResumeButton({ s }: { s: CaseState }) {
   const { t } = useT();
   const [, navigate] = useLocation();
@@ -55,7 +56,9 @@ function ResumeButton({ s }: { s: CaseState }) {
     setBusy(true);
     research.replay(sid, null)
       .then(({ task_id }) => { toast.success(t("case.toast.resumed")); navigate(`/case/${task_id}`); })
-      .catch((e: Error) => toast.error(t("case.toast.failed", { m: e.message })))
+      .catch((e: Error) => (e instanceof ApiError && e.status === 409
+        ? toast.warning(t("case.toast.wrapping"))
+        : toast.error(t("case.toast.failed", { m: e.message }))))
       .finally(() => setBusy(false));
   };
   return (

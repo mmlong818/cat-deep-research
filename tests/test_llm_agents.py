@@ -63,7 +63,7 @@ class CriticTests(_Base):
         scores = {k: 8 for k in SCORE_KEYS}
         scores["depth"] = 15  # 越界值被截到 10
         self.patch_call({**REVIEW, "scores": scores})
-        review, path = CriticAgent().review(self.ws, 0, 1)
+        review, path = CriticAgent().review(self.ws, 0, 1, question="问题")
         self.assertAlmostEqual(review["average_score"], round((8 * 6 + 10) / 7, 2))
         self.assertEqual(review["cycle"], 1)
         self.assertIn("草稿正文ABC", self.prompts[0])
@@ -73,14 +73,14 @@ class CriticTests(_Base):
         self.put("06_drafts/draft_1.md", "d")
         self.put("07_reviews/review_1.json", '{"marker": "PREV-REVIEW"}')
         self.patch_call(REVIEW)
-        CriticAgent().review(self.ws, 1, 2)
+        CriticAgent().review(self.ws, 1, 2, question="问题")
         self.assertIn("PREV-REVIEW", self.prompts[0])
 
     def test_llm_error_propagates_without_fallback(self):
         self.put("06_drafts/draft_0.md", "d")
         self.patch_call(LLMError("down"))
         with self.assertRaises(LLMError):
-            CriticAgent().review(self.ws, 0, 1)
+            CriticAgent().review(self.ws, 0, 1, question="问题")
         self.assertFalse(os.path.exists(os.path.join(self.ws, "07_reviews/review_1.json")))
 
 

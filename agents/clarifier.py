@@ -143,10 +143,13 @@ class ClarifierAgent:
         return result
 
 
-def summary_to_brief(summary: dict, extra_note: str | None = "") -> tuple:
-    """把澄清摘要转成 (补充说明文本, intent_meta)，供 orchestrator.run 使用（API 与 CLI 共用）。"""
+def summary_to_brief(summary: dict, extra_note: str | None = "", goal: str | None = None) -> tuple:
+    """把澄清摘要转成 (补充说明文本, intent_meta)，供 orchestrator.run 使用（API 与 CLI 共用）。
+    goal 为用户在委托台确认的研究目标，写在第一行。"""
     s = summary or {}
     parts = []
+    if goal:
+        parts.append(f"研究目标：{goal}")
     if s.get("scope"):
         parts.append(f"研究范围：{s['scope']}")
     if s.get("key_aspects"):

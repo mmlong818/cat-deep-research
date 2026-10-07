@@ -9,7 +9,7 @@ import unittest
 from unittest import mock
 
 import orchestrator as orch_mod
-from research.directives import GUIDE, Directives
+from research.directives import GUIDE, REVIEW_GUIDE, Directives
 from tests.pipeline_llm import ScriptedLLM, run_pipeline
 
 HEADING = "## 用户补充要求"
@@ -20,7 +20,7 @@ M45 = "报告里加一节成本对比"
 MC1 = "第二版请压缩篇幅"
 MC2 = "补充欧洲厂商的进展"
 UP_TO_45 = [M23, M34, M45]
-NOT_DIRECTED = ("planner", "source_verifier", "reconciler", "cross_check", "critic", "conclusion_validator")
+NOT_DIRECTED = ("planner", "source_verifier", "reconciler", "cross_check", "conclusion_validator")
 
 
 def inject(o, kind, data):
@@ -62,11 +62,12 @@ class DirectiveDeliveryTests(_Pipeline):
     def test_each_gate_reaches_the_agents_that_work_after_it_and_stays_in_effect(self):
         self.run_with_messages()
         got = {role: [directives_in(p) for p in self.llm.prompts(role)]
-               for role in ("researcher", "fact_checker", "analyst", "writer")}
+               for role in ("researcher", "fact_checker", "analyst", "writer", "critic")}
         self.assertEqual(got["researcher"], [[M23], [*UP_TO_45, MC1], [*UP_TO_45, MC1, MC2]])  # 首轮 + 两次补充研究
         self.assertEqual(got["fact_checker"], [[M23, M34]])                                   # 台账阶段的矛盾裁决
         self.assertEqual(got["analyst"], [[M23, M34]])
         self.assertEqual(got["writer"], [UP_TO_45, [*UP_TO_45, MC1], [*UP_TO_45, MC1, MC2]])  # 初稿 + 两次改写
+        self.assertEqual(got["critic"], [[*UP_TO_45, MC1], [*UP_TO_45, MC1, MC2], [*UP_TO_45, MC1, MC2]])  # 每轮评审
 
     def test_section_is_appended_at_the_end_of_the_prompt(self):
         self.run_with_messages()
@@ -103,9 +104,12 @@ class DirectiveDeliveryTests(_Pipeline):
             ("阶段2→3", ["fact_checker"], [M23]), ("阶段3→4", ["fact_checker"], [M34]),
             ("阶段2→3", ["analyst"], [M23]), ("阶段3→4", ["analyst"], [M34]),
             ("阶段2→3", ["writer"], [M23]), ("阶段3→4", ["writer"], [M34]), ("阶段4→5", ["writer"], [M45]),
+            ("阶段2→3", ["critic"], [M23]), ("阶段3→4", ["critic"], [M34]), ("阶段4→5", ["critic"], [M45]),
+            ("改进循环第1轮", ["critic"], [MC1]),
             ("阶段3→4", ["researcher"], [M34]), ("阶段4→5", ["researcher"], [M45]),
             ("改进循环第1轮", ["researcher"], [MC1]),
             ("改进循环第1轮", ["writer"], [MC1]),
+            ("改进循环第2轮", ["critic"], [MC2]),
             ("改进循环第2轮", ["researcher"], [MC2]),
             ("改进循环第2轮", ["writer"], [MC2]),
         ])
@@ -165,6 +169,10 @@ class DirectivesTests(unittest.TestCase):
         self.d.add("阶段3→4", ["丙"])
         expected = f"\n\n{HEADING}\n{GUIDE}\n\n【用户补充指令 1】甲\n\n【用户补充指令 2】乙\n\n【用户补充指令 3】丙"
         self.assertEqual(self.d.section("writer"), expected)
+
+    def test_critic_gets_the_same_messages_under_the_review_guide(self):
+        self.d.add("阶段2→3", ["甲"])
+        self.assertEqual(self.d.section("critic"), f"\n\n{HEADING}\n{REVIEW_GUIDE}\n\n【用户补充指令 1】甲")
 
     def test_applied_once_per_batch_and_agent(self):
         self.d.add("阶段2→3", ["甲"])

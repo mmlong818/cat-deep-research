@@ -124,6 +124,8 @@ class ClarifyReplyRequest(BaseModel):
 class ClarifyConfirmRequest(ModelChoice):
     summary: dict | None = None   # 用户可编辑后的摘要
     extra_note: str | None = None # 用户额外补充（可选）
+    question: str | None = None   # 委托台改过的研究问题（覆盖澄清时的原问题；空白视为没改）
+    goal: str | None = None       # 研究目标（写进补充说明第一行）
     min_cycles: int | None = None # 本次任务最小改进轮数
     max_cycles: int | None = None # 本次任务最大改进轮数
     depth: Depth = "standard"        # 研究深度档
@@ -220,11 +222,6 @@ def _run_research_task(task_id: str, question: str, clarification: str | None,
         hb_thread = threading.Thread(target=_heartbeat_thread, args=(task_id, hb_stop), daemon=True)
         hb_thread.start()
 
-        # 如果有预填写的澄清信息，合并到问题中
-        full_question = question
-        if clarification:
-            full_question = f"{question}\n\n补充说明：{clarification}"
-
         from orchestrator import ResearchOrchestrator
 
         def progress_callback(event_type: str, data: dict):
@@ -263,7 +260,8 @@ def _run_research_task(task_id: str, question: str, clarification: str | None,
                                          pause_event=pause_event, stop_event=stop_event)
         else:
             result = orchestrator.run(
-                full_question,
+                question,
+                clarification=clarification,  # 预填写的澄清信息与问题分开存，进入提示词时由编排器接在问题后面
                 research_strategy=research_strategy,
                 intent_meta=intent_meta,
                 pause_event=pause_event,
@@ -321,6 +319,15 @@ def _wait_for_threads(task_ids: list):
         thread = _task_threads.get(tid)
         if thread and thread is not threading.current_thread():
             thread.join(max(0.0, deadline - time.monotonic()))
+
+
+def _wrapping_up(session_id: str) -> bool:
+    """会话上有任务已经停下（状态不再是运行中），后台线程却还没退出（例如还在等进行中的模型调用返回）。"""
+    for task_id, thread in list(_task_threads.items()):
+        task = _store.get(task_id) or {}
+        if thread.is_alive() and task.get("session_id") == session_id and task.get("status") not in ACTIVE:
+            return True
+    return False
 
 
 def _remove_workspace(workspace: str, ignore_errors: bool):
@@ -545,7 +552,7 @@ async def stop_task(task_id: str):
         pause_ev.set()
     _store.merge(task_id, status="stopped")
     _store.audit(task_id, "stop_requested")
-    _put_event(task_id, "error", {"message": "任务已被用户停止"})
+    _put_event(task_id, "stopped", {"reason": "user"})  # 用户停止不是失败：不用 error 事件
     return {"status": "stopping"}
 
 
@@ -562,7 +569,7 @@ async def stop_all_tasks():
             pause_ev.set()
         _store.merge(tid, status="stopped")
         _store.audit(tid, "stop_requested", {"scope": "all"})
-        _put_event(tid, "error", {"message": "任务已被用户停止"})
+        _put_event(tid, "stopped", {"reason": "user"})
         stopped += 1
     return {"stopped": stopped}
 
@@ -574,7 +581,7 @@ async def delete_task(task_id: str):
     _signal_stop(task_id)
     _store.merge(task_id, status="deleted")
     _store.audit(task_id, "delete_requested")
-    _put_event(task_id, "error", {"message": "任务已删除"})
+    _put_event(task_id, "stopped", {"reason": "deleted"})
     # 等后台线程退出再删目录；超时（线程还卡在模型调用里）也照删，之后它落盘会被 _remove_workspace 的登记拒绝
     await asyncio.to_thread(_wait_for_threads, [task_id])
     # 删除工作区
@@ -586,8 +593,8 @@ async def delete_task(task_id: str):
         # 尝试从会话 ID 查找
         session_id = task.get("session_id")
         if session_id:
-            ws = _find_workspace(session_id)
-            if await asyncio.to_thread(os.path.isdir, ws):
+            ws = _find_workspace_or_none(session_id)  # 会话目录已不在时照样删任务记录
+            if ws and await asyncio.to_thread(os.path.isdir, ws):
                 _remove_workspace(ws, ignore_errors=True)
     # 清理持久化记录与内存状态
     _store.delete(task_id)
@@ -857,6 +864,8 @@ async def replay_session(session_id: str, request: ReplayRequest):
     """从指定阶段重放会话（之后阶段的产物与台账回滚到该阶段之前）；同一会话同时只能有一个任务"""
     workspace = _find_workspace(session_id)
     session_id = os.path.basename(workspace).removeprefix("session_")  # 路由按子串匹配，互斥检查要用完整 ID
+    if _wrapping_up(session_id):  # 停止后旧线程还会落盘，此时回滚工作空间会和它互相覆盖
+        raise HTTPException(status_code=409, detail="上一个线程还在收尾，请稍后再试")
     try:
         from_phase = PHASES[Checkpoints(workspace).resolve(request.from_phase)]
     except ValueError as e:
@@ -1095,12 +1104,13 @@ async def confirm_clarify(clarify_id: str, request: ClarifyConfirmRequest):
 
     # 将摘要拼装成补充说明与意图元数据，传给 orchestrator
     from agents.clarifier import summary_to_brief
-    clarification_text, intent_meta = summary_to_brief(summary, request.extra_note)
+    clarification_text, intent_meta = summary_to_brief(summary, request.extra_note, (request.goal or "").strip())
+    question = (request.question or "").strip() or session["question"]  # 委托台改过的研究问题优先
 
     profile = resolve_profile(request.provider, request.core_model, request.support_model)
 
     task_id = str(uuid.uuid4())[:8]
-    if _store.reserve(task_id, session["question"], MAX_CONCURRENT_TASKS, scores=[], current_cycle=0,
+    if _store.reserve(task_id, question, MAX_CONCURRENT_TASKS, scores=[], current_cycle=0,
                           clarify_id=clarify_id, summary=summary, intent_meta=intent_meta,
                           depth=request.depth, language=request.language, **_profile_fields(profile)):
         raise HTTPException(
@@ -1108,8 +1118,9 @@ async def confirm_clarify(clarify_id: str, request: ClarifyConfirmRequest):
             detail=f"当前已有 {_store.active_count()} 个任务在运行，请等待完成后再提交。"
         )
     _store.audit(task_id, "task_created", {
-        "source": "clarify", "question": session["question"], "clarify_history": session["history"],
+        "source": "clarify", "question": question, "clarify_history": session["history"],
         "summary": summary, "summary_edited": request.summary is not None, "extra_note": request.extra_note,
+        "goal": request.goal,
         "min_cycles": request.min_cycles, "max_cycles": request.max_cycles, "depth": request.depth,
         "language": request.language, "ask_loop": request.ask_loop, **_profile_fields(profile),
         "resolved_params": resolve_params(request.depth, request.language, request.min_cycles, request.max_cycles,
@@ -1124,7 +1135,7 @@ async def confirm_clarify(clarify_id: str, request: ClarifyConfirmRequest):
 
     thread = threading.Thread(
         target=_run_research_task,
-        args=(task_id, session["question"], clarification_text, None, intent_meta),
+        args=(task_id, question, clarification_text, None, intent_meta),
         kwargs={"min_cycles": request.min_cycles, "max_cycles": request.max_cycles, "depth": request.depth,
                 "language": request.language, "ask_loop": request.ask_loop, "profile": profile},
         daemon=True

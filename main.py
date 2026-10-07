@@ -107,7 +107,7 @@ def get_question() -> str:
 
 
 def clarify(question: str) -> tuple:
-    """交互式澄清（最多 4 轮，直接回车即开始研究）；返回 (完整问题, intent_meta)。"""
+    """交互式澄清（最多 4 轮，直接回车即开始研究）；返回 (补充说明, intent_meta)，澄清失败或中断时为 ("", None)。"""
     from agents.clarifier import ClarifierAgent, summary_to_brief
     from llm import LLMError
 
@@ -124,12 +124,11 @@ def clarify(question: str) -> tuple:
             result = agent.reply(result["history"], answer)
     except LLMError as e:
         print(f"  [警告] 澄清失败，按原问题研究: {e}", flush=True)
-        return question, None
+        return "", None
     except (EOFError, KeyboardInterrupt):
-        return question, None
+        return "", None
 
-    brief, intent_meta = summary_to_brief(result["summary"])
-    return (f"{question}\n\n补充说明：{brief}" if brief else question), intent_meta
+    return summary_to_brief(result["summary"])
 
 
 def display_final_report(report: str, workspace: str):
@@ -182,13 +181,15 @@ def main():
 
     # === 获取研究问题（交互模式下先澄清；命令行参数模式直接研究）===
     question = get_question()
-    intent_meta = None
+    clarification, intent_meta = "", None
     if len(sys.argv) <= 1:
-        question, intent_meta = clarify(question)
+        clarification, intent_meta = clarify(question)
 
     # === 确认开始 ===
     print(f"\n{'─'*70}", flush=True)
     print(f"📌 将要研究：{question}", flush=True)
+    if clarification:
+        print(f"   补充说明：{clarification}", flush=True)
     from config import DEFAULT_DEPTH
     from llm.profiles import default_profile
     profile = default_profile()
@@ -212,7 +213,7 @@ def main():
         from orchestrator import ResearchOrchestrator
 
         orchestrator = ResearchOrchestrator()
-        report = orchestrator.run(question, intent_meta=intent_meta)
+        report = orchestrator.run(question, intent_meta=intent_meta, clarification=clarification or None)
 
         elapsed = time.time() - start_time
         minutes = int(elapsed // 60)

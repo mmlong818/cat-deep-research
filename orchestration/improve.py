@@ -37,7 +37,7 @@ class ImproveLoopMixin(PhasesMixin):
             self.loop_ask.round_start(cycle, state, self._token_usage)
             self._citations[current] = self._annotate(current)
             reviewed = self._soft("评审", self.critic.review, self._ws, current, cycle,
-                                 key_entities=entities)
+                                 key_entities=entities, question=q)
             if reviewed is None:
                 print(f"  [错误] 评审失败，结束改进循环，保留最优第 {state.best_draft} 版", flush=True)
                 self._emit("loop_stop", {"cycle": cycle, "reason": "评审失败"})

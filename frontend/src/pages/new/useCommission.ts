@@ -37,16 +37,6 @@ const summaryOf = (d: Draft): ClarifySummary => ({
   key_aspects: d.fields.aspects, exclude: d.fields.exclude,
 });
 
-/** 后端拼补充说明时不带研究目标、也不接收改过的研究问题：这两项连同特别要求一起放进 extra_note（给研究部看的，用中文） */
-function noteOf(d: Draft): string | undefined {
-  const lines = [
-    d.fields.objective.trim() && `研究目标：${d.fields.objective.trim()}`,
-    d.question.trim() && d.question.trim() !== d.asked && `研究问题以此为准：${d.question.trim()}`,
-    d.fields.extra.trim() && `特别要求：${d.fields.extra.trim()}`,
-  ].filter(Boolean);
-  return lines.length ? lines.join("\n") : undefined;
-}
-
 /** 跳过提问时没有澄清会话：委托单上手填的各栏按后端 summary_to_brief 的写法拼成补充说明，随 POST /api/research 带上 */
 function briefOf(d: Draft): string | undefined {
   const f = d.fields;
@@ -63,11 +53,14 @@ function briefOf(d: Draft): string | undefined {
 
 const messageOf = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
-/** 签发：澄清过的走 confirm（带改过的摘要与补充说明），跳过提问的直接 POST /api/research（带手填的委托单）；返回任务编号 */
+/** 签发：澄清过的走 confirm（带改过的摘要、研究问题、研究目标与特别要求），跳过提问的直接 POST /api/research（带手填的委托单）；返回任务编号 */
 async function submit(d: Draft, uiLang: Lang): Promise<string> {
   const common = { ...depthRequest(d), language: d.lang ?? uiLang, ask_loop: d.askLoop, ...modelRequest(d.model) };
   const { task_id } = d.clarifyId
-    ? await clarify.confirm(d.clarifyId, { ...common, summary: summaryOf(d), extra_note: noteOf(d) })
+    ? await clarify.confirm(d.clarifyId, {
+      ...common, summary: summaryOf(d), question: d.question.trim(),
+      goal: d.fields.objective.trim() || undefined, extra_note: d.fields.extra.trim() || undefined,
+    })
     : await research.start(d.question.trim(), { ...common, clarification: briefOf(d) });
   return task_id;
 }

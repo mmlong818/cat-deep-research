@@ -8,7 +8,7 @@ import { Dialog } from "../../components/ui/Dialog";
 import { MAX_ACTIVE, useDesk } from "../../components/shell/useDesk";
 import { useT, locale, type TKey } from "../../i18n";
 import { N, rich } from "../../i18n/rich";
-import { research } from "../../lib/api";
+import { ApiError, research } from "../../lib/api";
 import type { SessionMeta } from "../../lib/types";
 import { plainQuestion } from "../../lib/format";
 import { prefillDraft } from "../new/draft";
@@ -70,7 +70,10 @@ function useActions(onRemoved: (key: string) => void) {
       const { task_id, from_phase } = await research.replay(s.session_id, null);
       toast.success(t("cabinet.toast.resumed", { id: caseId(s), p: t(`shell.stage.${from_phase}` as TKey) }));
       navigate(`/case/${task_id}`);
-    } catch (e) { toast.error(t("cabinet.toast.resumeFailed", { msg: (e as Error).message })); }
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 409) toast.warning(t("cabinet.toast.wrapping")); // 停止后旧线程还没退出
+      else toast.error(t("cabinet.toast.resumeFailed", { msg: (e as Error).message }));
+    }
   };
   const confirmDelete = async () => {
     if (!doomed) return;

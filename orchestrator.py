@@ -92,22 +92,26 @@ class ResearchOrchestrator(ImproveLoopMixin, FinishMixin):
             depth: str | None = None,
             language: str = "zh",
             max_queries: int | None = None,
-            ask_loop: bool = False):
+            ask_loop: bool = False,
+            clarification: str | None = None):
         """执行完整的研究流程，返回最终报告正文（中断时返回提示文本）。
 
         depth：研究深度档（config.DEPTH_PRESETS），默认 config.DEFAULT_DEPTH。
         min_cycles / max_cycles：本次任务级别的轮数覆盖，优先于档位的轮数范围。
         language：最终报告的撰写语言（zh/en），写入检查点参数，重放沿用。
         max_queries：覆盖档位的规划查询数。ask_loop：改进循环中即时询问用户是否继续（需有界面应答，默认关）。
+        clarification：委托时确认的补充说明；与研究问题分开存，进入提示词时接在问题后面。
         """
         self._prepare(pause_event, stop_event)
         print(f"\n{'='*70}\n🚀 多智能体研究系统启动（含质量验证流程）\n{'='*70}", flush=True)
         depth = depth or _config.DEFAULT_DEPTH
         policy = self._loop_policy(intent_meta, depth, min_cycles, max_cycles)
-        params = {"question": question, "strategy": self._strategy(intent_meta, research_strategy),
+        params = {"question": question, "clarification": clarification,
+                  "strategy": self._strategy(intent_meta, research_strategy),
                   "policy": asdict(policy), "depth": depth, "language": language,
                   "max_queries": max_queries, "ask_loop": ask_loop}
         self.workspace = self._create_workspace(question, {
+            "clarification": clarification,
             "language": language,
             "resolved_params": resolve_params(depth, language, min_cycles, max_cycles, max_queries,
                                               self.profile, ask_loop)})
@@ -185,7 +189,7 @@ class ResearchOrchestrator(ImproveLoopMixin, FinishMixin):
         return _config.DEPTH_PRESETS[ctx["params"].get("depth", "deep")]
 
     def _step_clarify(self, ctx):
-        ctx["q"] = self._phase_clarify(ctx["params"]["question"])
+        ctx["q"] = self._phase_clarify(ctx["params"]["question"], ctx["params"].get("clarification"))
 
     def _step_plan(self, ctx):
         n_queries = ctx["params"].get("max_queries") or self._preset(ctx)["queries"]  # V5 之前的检查点没有该字段

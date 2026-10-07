@@ -186,6 +186,11 @@ type ModelFields = Pick<ResearchStartOptions, "provider" | "core_model" | "suppo
 
 export interface ClarifyConfirmOptions extends ModelFields {
   summary: ClarifySummary;
+  /** 委托台上的研究问题（改过的以此为准；空白时后端沿用澄清时的原问题） */
+  question?: string;
+  /** 研究目标，后端写进补充说明第一行 */
+  goal?: string;
+  /** 特别要求 */
   extra_note?: string;
   min_cycles?: number;
   max_cycles?: number;

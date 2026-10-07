@@ -85,7 +85,7 @@ class CriticEntitiesTests(_WS):
     def prompt(self, **kw):
         self.put("06_drafts/draft_0.md", "草稿")
         self.patch_call(_ok(data=REVIEW))
-        CriticAgent().review(self.ws, 0, 1, **kw)
+        CriticAgent().review(self.ws, 0, 1, question="问题", **kw)
         return self.reqs[0].prompt
 
     def test_critic_receives_the_list_and_is_told_to_raise_research_for_omissions(self):

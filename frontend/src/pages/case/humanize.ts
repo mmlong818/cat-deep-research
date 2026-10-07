@@ -1,6 +1,5 @@
 import type { TFunc, TKey } from "../../i18n";
 import type { LogLine } from "../../lib/live/model";
-import { STOPPED_MESSAGES } from "../../lib/live/reduce";
 
 // 事件 → 人话（办案记录时间线里每个阶段下的动态）；原始事件另在"原始日志"里逐行列出
 
@@ -32,7 +31,8 @@ const FORMATS: Record<string, Fmt> = {
   confidence_report: (t, d) => [t("case.h.conf", { v: f2(d.overall_confidence) }), "done"],
   stats: (t, d) => [t("case.h.stats", { s: d.total_sources ?? "?", c: d.claims_checked ?? "?" }), "done"],
   completed: (t) => [t("case.h.completed"), "done"],
-  error: (t, d) => [STOPPED_MESSAGES.includes(d.message) ? t("case.h.stopped") : t("case.h.error", { m: d.message ?? "" }), "warn"],
+  stopped: (t) => [t("case.h.stopped"), "warn"],
+  error: (t, d) => [t("case.h.error", { m: d.message ?? "" }), "warn"],
 };
 
 /** 某个阶段下的人话动态：连续重复的（如研究员按查询组并行开工）合并成"×n" */

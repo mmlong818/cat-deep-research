@@ -8,7 +8,6 @@ type Data = Record<string, any>;
 export interface StreamEvent { type: string; data: Data; timestamp?: string }
 type Handler = (s: CaseState, d: Data, at: string, live: boolean) => CaseState;
 
-export const STOPPED_MESSAGES = ["任务已被用户停止", "任务已删除"]; // 停止与失败共用 error 事件，只能按文案区分
 const LOG_MAX = 400;
 const QUIET = new Set(["heartbeat", "ping", "snapshot", "disconnected"]);
 
@@ -56,12 +55,6 @@ function phase(s: CaseState, d: Data, at: string): CaseState {
   const idx = key ? STAGES.indexOf(key) : -1;
   if (idx < 0 || idx < s.stage) return s;
   return { ...s, stage: idx, stageAt: s.stageAt[key] ? s.stageAt : { ...s.stageAt, [key]: at } };
-}
-
-function error(s: CaseState, d: Data): CaseState {
-  const msg = String(d.message ?? "");
-  if (STOPPED_MESSAGES.includes(msg)) return { ...s, status: "stopped", stopping: false };
-  return { ...s, status: "failed", error: msg };
 }
 
 function review(s: CaseState, d: Data, at: string): CaseState {
@@ -113,7 +106,8 @@ const HANDLERS: Record<string, Handler> = {
   stats: (s, d) => ({ ...s, stats: d, elapsed: Number(d.elapsed_seconds ?? s.elapsed) }),
   heartbeat: (s, d) => ({ ...s, elapsed: Number(d.elapsed ?? s.elapsed), elapsedAt: Date.now() }),
   completed: (s, d) => ({ ...s, status: "completed", sessionId: d.session_id || s.sessionId }),
-  error: (s, d) => error(s, d),
+  stopped: (s) => ({ ...s, status: "stopped", stopping: false }), // 用户停止（或删除），不是失败
+  error: (s, d) => ({ ...s, status: "failed", error: String(d.message ?? "") }),
   end: (s) => ({ ...s, ended: true, status: s.status === "running" || s.status === "connecting" ? "interrupted" : s.status }),
   disconnected: (s, d) => ({ ...s, offline: Number(d.retry_in) || 1 }),
 };

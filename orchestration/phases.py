@@ -10,18 +10,20 @@ MIN_RESEARCH_BYTES = 1000   # 首轮研究内容低于此值视为失败，触�
 
 
 class PhasesMixin(OrchestratorBase):
-    def _phase_clarify(self, question: str) -> str:
-        """澄清由调用方（API 的 ClarifierAgent / main.py 交互模式）在 run 之前完成，这里只落盘。"""
+    def _phase_clarify(self, question: str, clarification: str | None = None) -> str:
+        """澄清由调用方（API 的 ClarifierAgent / main.py 交互模式）在 run 之前完成，这里只落盘；
+        委托时确认的补充说明接在问题后面，随问题进入各智能体的提示词。"""
         self._phase(1, "📝 阶段 1/8：意图识别与澄清", "clarifying", "问题澄清")
+        final = f"{question}\n\n补充说明：{clarification}" if clarification else question
         write_json(os.path.join(self._ws, "04_clarification", "clarification.json"),
-                   {"original_question": question, "analysis": "", "final_question": question})
-        self._log(f"研究方向确认: {question[:200]}")
+                   {"original_question": question, "analysis": "", "final_question": final})
+        self._log(f"研究方向确认: {final[:200]}")
         gate = "阶段1→2"
         msgs = self._gate(gate)
-        if msgs:  # 并入研究问题，随问题进入规划师、分析师与写作者的提示词
+        if msgs:  # 并入研究问题，随问题进入规划师、分析师、写作者与评审员的提示词
             self._question_batch = {"phase": gate, "messages": msgs}
         extra = format_messages(msgs)
-        return f"{question}\n\n{extra}" if extra else question
+        return f"{final}\n\n{extra}" if extra else final
 
     def _phase_plan(self, q: str, strategy: str | None, n_queries: int) -> dict:
         self._phase(2, "📋 阶段 2/8：研究规划", "planning", "研究规划")

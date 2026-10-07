@@ -114,9 +114,11 @@ class CriticAgent(LLMAgent):
         super().__init__(name="评审员", system_prompt=CRITIC_SYSTEM_PROMPT,
                          model=model or _config.CRITIC_MODEL, schema=REVIEW_SCHEMA)
 
-    def review(self, workspace: str, draft_num: int, cycle: int, key_entities: list | None = None) -> tuple:
+    def review(self, workspace: str, draft_num: int, cycle: int, key_entities: list | None = None, *,
+               question: str) -> tuple:
         """评审指定草稿，返回 (评审 dict, 评审文件路径)；key_entities 为研究计划指定的必须覆盖主体；
-        失败抛 LLMError。"""
+        question 为写作者收到的同一份研究问题（含委托时确认的补充说明、研究开始前追加的指令），
+        用来检查报告是否满足用户要求，不改变评分标准；失败抛 LLMError。"""
         reviews_dir = os.path.join(workspace, "07_reviews")
         draft = read_text(os.path.join(workspace, "06_drafts", f"draft_{draft_num}.md"))
         review_file = os.path.join(reviews_dir, f"review_{cycle}.json")
@@ -135,12 +137,18 @@ class CriticAgent(LLMAgent):
 
         prompt = f"""请对下面的研究报告草稿进行全面评审。这是第 {cycle} 轮评审。
 
+## 用户的研究问题与委托内容
+{question}
+
 ## 待评审草稿（第 {draft_num} 版）
 {draft}{prev_text}{entities_text}
 
 ## 要求
 - 评审要严格、客观，不能因为是第 {cycle} 轮就降低标准
 - critical_issues 要具体，说明在哪里有问题
+- 对照「用户的研究问题与委托内容」（其中的「补充说明」是委托时确认的研究目标、范围、排除内容与特别要求）\
+逐条检查报告是否满足：违背或遗漏的要求写进 critical_issues（指明是哪一条要求），并列入 priority_improvements；\
+这些要求只用于检查报告是否满足用户要求，不改变 7 个维度的评分标准
 - 报告用 [C数字] 引用声明台账，末尾「声明来源」附录由系统按引用自动生成，可据此评估来源
 - additional_research_needed 只列真正需要补充搜索的内容：topic 写成可直接搜索的话题；
   claim_id 填需要补证或核实的声明编号（针对报告缺口而非某条声明时填空串）；reason 说明缺什么证据"""

@@ -93,7 +93,7 @@ class FakeAgents:
         self.adjudications += 1
         return 0
 
-    def review(self, ws, draft_num, cycle, key_entities=None):
+    def review(self, ws, draft_num, cycle, key_entities=None, *, question):
         self.critic_entities.append(key_entities)
         path = os.path.join(ws, "07_reviews", f"review_{cycle}.json")
         data = {"scores": {}, "average_score": self.scores.pop(0), "critical_issues": [],
@@ -208,10 +208,10 @@ class OrchestratorTests(unittest.TestCase):
         fake = FakeAgents([7.0, 7.4, 7.7])
         real_review = fake.review
 
-        def review(ws, draft_num, cycle, key_entities=None):
+        def review(ws, draft_num, cycle, key_entities=None, *, question):
             if cycle == 4:
                 raise LLMQuotaError("You've hit your session limit")
-            return real_review(ws, draft_num, cycle, key_entities)
+            return real_review(ws, draft_num, cycle, key_entities, question=question)
 
         fake.review = review
         o, result = self.run_with(fake, min_cycles=2, max_cycles=5)
