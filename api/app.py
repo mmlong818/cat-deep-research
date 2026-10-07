@@ -158,7 +158,7 @@ DELETE_JOIN_TIMEOUT = 5.0
 
 
 # 进度事件中需要进审计日志的（其余只推送给前端）
-AUDITED_EVENTS = ("user_message_ack", "checkpoint", "loop_stop", "final_selected")
+AUDITED_EVENTS = ("user_message_ack", "user_message_applied", "checkpoint", "loop_stop", "final_selected")
 
 
 def _get_task_status(task_id: str) -> dict:
@@ -932,6 +932,12 @@ async def get_session_ledger(session_id: str):
     return {"session_id": session_id, **Ledger.load(_find_workspace(session_id)).view()}
 
 
+@app.get("/api/sessions/{session_id}/reviews")
+def get_session_reviews(session_id: str):
+    """每轮评审（卷宗「过程」页）：7 维评分、平均分、优点、关键问题、下一版要改的点"""
+    return {"session_id": session_id, "reviews": _sessions.read_reviews(_find_workspace(session_id))}
+
+
 def _read_session_question(workspace: str) -> str:
     try:
         with open(os.path.join(workspace, "00_session.json"), encoding="utf-8") as f:
@@ -1029,7 +1035,8 @@ async def start_clarify(request: ClarifyStartRequest):
     try:
         from agents.clarifier import ClarifierAgent
         agent = ClarifierAgent(profile)
-        result = agent.start(request.question.strip())
+        # 模型调用是同步的（内部 asyncio.run），放到线程里跑：不能在事件循环里直接调，也别卡住其他请求与 SSE
+        result = await asyncio.to_thread(agent.start, request.question.strip())
         clarify_id = str(uuid.uuid4())[:8]
         _clarify_sessions[clarify_id] = {
             "clarify_id": clarify_id,
@@ -1061,7 +1068,7 @@ async def clarify_message(clarify_id: str, request: ClarifyReplyRequest):
     try:
         from agents.clarifier import ClarifierAgent
         agent = ClarifierAgent(session.get("profile"))
-        result = agent.reply(session["history"], request.message.strip())
+        result = await asyncio.to_thread(agent.reply, session["history"], request.message.strip())
         session["history"] = result.get("history", session["history"])
         session["summary"] = result.get("summary", session["summary"])
         session["turns"] += 1

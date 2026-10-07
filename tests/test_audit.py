@@ -115,6 +115,29 @@ class AuditApiTests(unittest.TestCase):
                          ["task_created", "checkpoint", "final_selected", "task_finished"])
         self.assertEqual(res.json()["entries"][-1]["payload"]["status"], "completed")
 
+    def test_user_message_applied_is_audited(self):
+        """补充指令"已用上"（写进了哪个智能体的提示词）要进审计日志，广播器过期或重启后会话历史里仍能看到。"""
+        applied = {"messages": ["重点对比个人版价格"], "phase": "阶段2→3", "agents": ["researcher"]}
+
+        class FakeOrchestrator:
+            interrupted = False
+
+            def __init__(self, progress_callback, profile=None):
+                self.cb, self.workspace, self.session_id = progress_callback, "/ws/session_S10", "S10"
+
+            def run(self, question, **kw):
+                self.cb("session", {"session_id": "S10", "workspace": self.workspace})
+                self.cb("user_message_ack", {"messages": applied["messages"], "phase": applied["phase"]})
+                self.cb("user_message_applied", applied)
+                return "报告"
+
+        self.store.reserve("t10", "q", limit=2)
+        with mock.patch("orchestrator.ResearchOrchestrator", FakeOrchestrator):
+            _REAL_RUN("t10", "q", None)
+        entries = self.store.audit_log(session_id="S10")
+        self.assertEqual([e["kind"] for e in entries], ["user_message_ack", "user_message_applied", "task_finished"])
+        self.assertEqual(entries[1]["payload"], applied)
+
     def test_stopped_task_is_not_reported_completed(self):
         root = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, root, True)

@@ -346,11 +346,14 @@ class Ledger:
         return "\n".join(rows)
 
     def view(self) -> dict:
-        """报告页用的只读视图：计数、每处矛盾的双方声明（含来源）与裁决，以及全部有效声明（不含已合并的）。"""
+        """报告页用的只读视图：计数、每处矛盾的双方声明（含来源）与裁决，以及全部有效声明（不含已合并的）。
+        声明带原文引语 quotes（{来源编号: 片段}，旧数据为空）与核查备注 note，来源带发布日期 published。"""
         def claim(cid):
             c = self.claims[cid]
-            return {"id": cid, "text": c["text"], "status": c["status"],
-                    "sources": [{"id": s, "url": self.sources[s]["url"], "title": self.sources[s]["title"]}
+            return {"id": cid, "text": c["text"], "status": c["status"], "note": c.get("note", ""),
+                    "quotes": dict(c.get("quotes") or {}),
+                    "sources": [{"id": s, "url": self.sources[s]["url"], "title": self.sources[s]["title"],
+                                 "published": self.sources[s].get("published", "")}
                                 for s in c["sources"] if s in self.sources]}
         return {
             "counts": {"claims": len(self.claims), "citable": len(self.citable()), "sources": len(self.sources),

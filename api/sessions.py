@@ -1,6 +1,7 @@
 """会话列表与阶段记录：把 task_store 的任务记录与 workspace 里的会话元数据合并成前端可直接展示的视图。"""
 import json
 import os
+import re
 from datetime import datetime
 
 from api.db.task_store import ACTIVE, TaskStore
@@ -43,17 +44,32 @@ def _status(task: dict, meta: dict) -> str:
     return raw if raw in ("completed", "stopped") else "interrupted"
 
 
+CITATION_KEYS = ("cited_claims", "violations", "numeric_coverage")
+
+
+def _citations(meta: dict) -> dict | None:
+    """终稿的引用检查结果（研究完成时写入 00_session.json）；没有或损坏时为 None，缺的键补 None。"""
+    raw = meta.get("citations")
+    return {k: raw.get(k) for k in CITATION_KEYS} if isinstance(raw, dict) else None
+
+
 def _entry(session_id: str, task: dict | None, meta: dict | None, fallback_time: str) -> dict:
     task, meta = task or {}, meta or {}
     params = meta.get("resolved_params") or {}
+    usage = meta.get("token_usage")
     return {
         "session_id": session_id,
         "task_id": task.get("task_id"),
-        "question": (meta.get("question") or task.get("question") or "")[:100],
+        "question": meta.get("question") or task.get("question") or "",
         "status": _status(task, meta),
         "created_at": meta.get("created_at") or task.get("created_at") or fallback_time,
         "final_score": meta.get("final_score"),
         "total_cycles": meta.get("total_cycles"),
+        "elapsed_seconds": meta.get("elapsed_seconds"),
+        "cost_usd": usage.get("cost_usd") if isinstance(usage, dict) else None,
+        "final_draft": meta.get("final_draft"),
+        "best_scored_draft": meta.get("best_scored_draft"),
+        "citations": _citations(meta),
         "depth": params.get("depth") or task.get("depth"),
         # 多模型之前的会话没有这些字段（当时只有 Claude），展示为空
         "provider": meta.get("provider") or params.get("provider") or task.get("provider"),
@@ -71,13 +87,13 @@ def list_sessions(store: TaskStore, workspace_dir: str, limit: int, offset: int)
     没建成工作空间的任务（如启动即失败）单独成项，session_id 为空，用 task_id 标识。"""
     workspaces = _workspaces(workspace_dir)
     latest: dict[str, dict] = {}
-    entries = []
+    rows: list[tuple[dict, str | None]] = []  # (条目, 工作空间路径)
     for task in store.list_tasks():  # 新到旧，同一会话先遇到的就是最新任务
         sid = task["session_id"]
         if task["status"] == "deleted":
             continue
         if not sid:
-            entries.append(_entry("", task, None, ""))
+            rows.append((_entry("", task, None, ""), None))
         elif sid in workspaces:
             latest.setdefault(sid, task)
     for key, (name, path, meta) in workspaces.items():
@@ -85,9 +101,38 @@ def list_sessions(store: TaskStore, workspace_dir: str, limit: int, offset: int)
             continue
         mtime = datetime.fromtimestamp(os.path.getmtime(path)).isoformat()
         session_id = meta.get("session_id", name) if meta is not None else key
-        entries.append(_entry(session_id, latest.get(key), meta, mtime))
-    entries.sort(key=lambda e: e["created_at"], reverse=True)
-    return {"sessions": entries[offset:offset + limit], "total": len(entries), "limit": limit, "offset": offset}
+        rows.append((_entry(session_id, latest.get(key), meta, mtime), path))
+    rows.sort(key=lambda r: r[0]["created_at"], reverse=True)
+    page = [{**entry, "confidence": _confidence(path)} for entry, path in rows[offset:offset + limit]]
+    return {"sessions": page, "total": len(rows), "limit": limit, "offset": offset}
+
+
+def _confidence(path: str | None) -> float | None:
+    """置信度报告里的综合可信度（只读当前页的会话）；没有、损坏或不是数字时为 None。"""
+    if not path:
+        return None
+    value = _read_meta(os.path.join(path, "08_verification", "confidence_report.json")).get("overall_confidence")
+    return value if isinstance(value, (int, float)) and not isinstance(value, bool) else None
+
+
+REVIEW_FILE = re.compile(r"review_(\d+)\.json")
+REVIEW_LISTS = ("strengths", "critical_issues", "priority_improvements")
+
+
+def read_reviews(workspace: str) -> list:
+    """07_reviews/review_N.json 按轮次排序：7 维评分、平均分、优点、关键问题、下一版要改的点；损坏的文件跳过。"""
+    folder = os.path.join(workspace, "07_reviews")
+    if not os.path.isdir(folder):
+        return []
+    rounds = []
+    for name in os.listdir(folder):
+        m = REVIEW_FILE.fullmatch(name)
+        data = _read_meta(os.path.join(folder, name)) if m else {}
+        if data:
+            rounds.append((int(m.group(1)), data))
+    return [{"cycle": data.get("cycle", n), "scores": data.get("scores") or {},
+             "average_score": data.get("average_score"), **{k: data.get(k) or [] for k in REVIEW_LISTS}}
+            for n, data in sorted(rounds, key=lambda r: r[0])]
 
 
 def with_phase_keys(tasks: list) -> list:

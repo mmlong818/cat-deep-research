@@ -131,6 +131,144 @@ class SessionListTests(SessionsTestCase):
             res = self.client.get("/api/sessions", params=params, headers=HEADERS)
             self.assertEqual(res.status_code, 422, params)
 
+    def test_entry_carries_cycles_elapsed_and_cost_from_session_meta(self):
+        self.workspace("20261001_000012", "2026-10-01T00:00:12", total_cycles=5, elapsed_seconds=4073,
+                       token_usage={"total_input": 13378092, "cost_usd": 31.553})
+        s = self.by_id(self.sessions())["20261001_000012"]
+        self.assertEqual((s["total_cycles"], s["elapsed_seconds"], s["cost_usd"]), (5, 4073, 31.553))
+
+    def test_entry_without_usage_or_with_broken_usage_has_null_cost(self):
+        self.workspace("20261001_000013", "2026-10-01T00:00:13")
+        self.workspace("20261001_000014", "2026-10-01T00:00:14", token_usage="坏的")
+        got = self.by_id(self.sessions())
+        for sid in ("20261001_000013", "20261001_000014"):
+            s = got[sid]
+            self.assertEqual((s["total_cycles"], s["elapsed_seconds"], s["cost_usd"]), (None, None, None), sid)
+
+    def test_task_only_entry_has_null_cost(self):
+        self.task("t10", "failed", error="x")
+        s = self.by_id(self.sessions())["t10"]
+        self.assertEqual((s["elapsed_seconds"], s["cost_usd"]), (None, None))
+
+    def test_entry_carries_final_draft_and_citations_from_session_meta(self):
+        """卷宗封面要写「终稿取第 N 版、引用违规、带数字句子的挂声明比例」，这些只在 00_session.json 里。"""
+        self.workspace("20261001_000015", "2026-10-01T00:00:15", final_draft=4, best_scored_draft=3,
+                       citations={"cited_claims": 251, "violations": 0, "numeric_coverage": 0.753})
+        s = self.by_id(self.sessions())["20261001_000015"]
+        self.assertEqual((s["final_draft"], s["best_scored_draft"]), (4, 3))
+        self.assertEqual(s["citations"], {"cited_claims": 251, "violations": 0, "numeric_coverage": 0.753})
+
+    def test_partial_citations_fill_missing_keys_with_null(self):
+        self.workspace("20261001_000016", "2026-10-01T00:00:16", final_draft=0, citations={"cited_claims": 12})
+        s = self.by_id(self.sessions())["20261001_000016"]
+        self.assertEqual((s["final_draft"], s["best_scored_draft"]), (0, None))
+        self.assertEqual(s["citations"], {"cited_claims": 12, "violations": None, "numeric_coverage": None})
+
+    def test_missing_or_broken_final_fields_are_null(self):
+        self.workspace("20261001_000017", "2026-10-01T00:00:17")
+        self.workspace("20261001_000018", "2026-10-01T00:00:18", citations="坏的")
+        self.task("t11", "failed", error="x")
+        got = self.by_id(self.sessions())
+        for key in ("20261001_000017", "20261001_000018", "t11"):
+            s = got[key]
+            self.assertEqual((s["final_draft"], s["best_scored_draft"], s["citations"]), (None, None, None), key)
+
+    def test_in_progress_session_without_active_task_is_interrupted(self):
+        """档案柜：00_session.json 还停在改进等进行中的状态，但任务库里已没有对应的活动任务 → 已中断（可续办）。"""
+        self.workspace("20261001_000019", "2026-10-01T00:00:19", status="improving")  # 任务库里没有记录
+        path = self.workspace("20261001_000020", "2026-10-01T00:00:20", status="improving")
+        self.task("t12", "deleted", "20261001_000020", path)  # 只剩已删除的任务记录
+        got = self.by_id(self.sessions())
+        for sid in ("20261001_000019", "20261001_000020"):
+            self.assertEqual(got[sid]["status"], "interrupted", sid)
+
+    def test_entry_carries_overall_confidence_from_confidence_report(self):
+        """档案柜每行要显示可信度：取 08_verification/confidence_report.json 的 overall_confidence。"""
+        path = self.workspace("20261001_000021", "2026-10-01T00:00:21")
+        os.makedirs(os.path.join(path, "08_verification"))
+        with open(os.path.join(path, "08_verification", "confidence_report.json"), "w", encoding="utf-8") as f:
+            json.dump({"overall_confidence": 0.689, "confidence_level": "medium"}, f)
+        broken = self.workspace("20261001_000022", "2026-10-01T00:00:22")
+        os.makedirs(os.path.join(broken, "08_verification"))
+        with open(os.path.join(broken, "08_verification", "confidence_report.json"), "w", encoding="utf-8") as f:
+            f.write("{坏的")
+        self.workspace("20261001_000023", "2026-10-01T00:00:23")
+        self.task("t13", "failed", error="x")
+        got = self.by_id(self.sessions())
+        self.assertEqual(got["20261001_000021"]["confidence"], 0.689)
+        for key in ("20261001_000022", "20261001_000023", "t13"):
+            self.assertIsNone(got[key]["confidence"], key)
+
+    def test_question_is_listed_in_full(self):
+        """档案柜要显示完整问题，不能在接口里截断。"""
+        question = "固态电池" * 40
+        self.workspace("20261001_000024", "2026-10-01T00:00:24", question=question)
+        self.assertEqual(self.by_id(self.sessions())["20261001_000024"]["question"], question)
+
+
+class ReviewsApiTests(SessionsTestCase):
+    """卷宗「过程」页：每轮评审的 7 维评分、平均分、优点、关键问题与下一版要改的点。"""
+
+    SCORES = {"completeness": 7, "accuracy": 7, "depth": 7.5, "clarity": 8, "usefulness": 7.5, "sources": 6,
+              "simplicity": 6.5}
+
+    def review(self, path, n, **extra):
+        os.makedirs(os.path.join(path, "07_reviews"), exist_ok=True)
+        data = {"cycle": n, "scores": self.SCORES, "average_score": 7.07, "strengths": ["口径清楚"],
+                "critical_issues": [{"issue": "来源弱", "severity": "high", "suggestion": "换一手来源"}],
+                "priority_improvements": ["补现代汽车"], "overall_assessment": "合格", "missing_content": ["卫蓝"],
+                **extra}
+        with open(os.path.join(path, "07_reviews", f"review_{n}.json"), "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False)
+
+    def reviews(self, sid):
+        res = self.client.get(f"/api/sessions/{sid}/reviews", headers=HEADERS)
+        self.assertEqual(res.status_code, 200, res.text)
+        return res.json()["reviews"]
+
+    def test_lists_rounds_in_numeric_order_with_requested_fields(self):
+        path = self.workspace("20261001_000020", "2026-10-01T00:00:20")
+        for n in (10, 2, 1):
+            self.review(path, n, average_score=7.0 + n / 100)
+        got = self.reviews("20261001_000020")
+        self.assertEqual([r["cycle"] for r in got], [1, 2, 10])
+        self.assertEqual(set(got[0]), {"cycle", "scores", "average_score", "strengths", "critical_issues",
+                                        "priority_improvements"})
+        self.assertEqual((got[0]["scores"], got[0]["average_score"]), (self.SCORES, 7.01))
+        self.assertEqual(got[0]["critical_issues"][0]["severity"], "high")
+        self.assertEqual((got[0]["strengths"], got[0]["priority_improvements"]), (["口径清楚"], ["补现代汽车"]))
+
+    def test_cycle_falls_back_to_file_number_and_missing_lists_are_empty(self):
+        path = self.workspace("20261001_000021", "2026-10-01T00:00:21")
+        os.makedirs(os.path.join(path, "07_reviews"))
+        with open(os.path.join(path, "07_reviews", "review_3.json"), "w", encoding="utf-8") as f:
+            json.dump({"scores": self.SCORES, "average_score": 7.5}, f)
+        (r,) = self.reviews("20261001_000021")
+        self.assertEqual((r["cycle"], r["strengths"], r["critical_issues"], r["priority_improvements"]),
+                         (3, [], [], []))
+
+    def test_skips_broken_and_unrelated_files(self):
+        path = self.workspace("20261001_000022", "2026-10-01T00:00:22")
+        self.review(path, 1)
+        with open(os.path.join(path, "07_reviews", "review_2.json"), "w", encoding="utf-8") as f:
+            f.write("{坏的")
+        with open(os.path.join(path, "07_reviews", "review_x.json"), "w", encoding="utf-8") as f:
+            f.write("{}")
+        with open(os.path.join(path, "07_reviews", "notes.txt"), "w", encoding="utf-8") as f:
+            f.write("x")
+        self.assertEqual([r["cycle"] for r in self.reviews("20261001_000022")], [1])
+
+    def test_session_without_reviews_is_empty_and_unknown_session_is_404(self):
+        self.workspace("20261001_000023", "2026-10-01T00:00:23")
+        self.assertEqual(self.reviews("20261001_000023"), [])
+        res = self.client.get("/api/sessions/nope/reviews", headers=HEADERS)
+        self.assertEqual(res.status_code, 404)
+
+    def test_requires_api_token(self):
+        self.workspace("20261001_000024", "2026-10-01T00:00:24")
+        res = self.client.get("/api/sessions/20261001_000024/reviews")
+        self.assertEqual(res.status_code, 401)
+
 
 class PhaseLogTests(SessionsTestCase):
     def test_lists_phases_per_task_oldest_first_with_failure_reason(self):

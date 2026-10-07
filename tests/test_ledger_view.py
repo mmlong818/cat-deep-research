@@ -39,7 +39,8 @@ class LedgerViewTests(unittest.TestCase):
         x1, x2 = view["contradictions"]
         self.assertEqual((x1["id"], x1["topic"]), ("X1", "量产时间"))
         self.assertEqual([c["status"] for c in x1["claims"]], ["overruled", "supported"])
-        self.assertEqual(x1["claims"][0]["sources"], [{"id": "S1", "url": "https://a.com/1", "title": "A 站"}])
+        self.assertEqual(x1["claims"][0]["sources"],
+                         [{"id": "S1", "url": "https://a.com/1", "title": "A 站", "published": ""}])
         self.assertEqual(x1["resolution"], {"sides_with": "C2", "reason": "官方公告为 2030",
                                             "evidence_url": "https://gov.cn/x"})
         self.assertIsNone(x2["resolution"])
@@ -59,8 +60,30 @@ class LedgerViewTests(unittest.TestCase):
         c10 = next(c for c in claims if c["id"] == "C10")
         self.assertEqual(c10["status"], "supported")
         self.assertEqual(c10["text"], "声明 10")
-        self.assertEqual(c10["sources"], [{"id": "S10", "url": "https://a.com/10", "title": "站 10"}])
+        self.assertEqual(c10["sources"], [{"id": "S10", "url": "https://a.com/10", "title": "站 10", "published": ""}])
         self.assertEqual(len(next(c for c in claims if c["id"] == "C1")["sources"]), 2)  # 合并后来源并入
+
+    def test_claims_carry_quotes_note_and_source_published_date(self):
+        """卷宗旁注要展示原文引语、核查备注与来源发布日期。"""
+        ledger = Ledger.load(self.ws)
+        cid, _ = ledger.add_claim("CATL targets 2027", "https://a.com/1", "A 站", published="2026-09-30",
+                                  quote="small-batch production is planned for 2027")
+        ledger.set_status(cid, "supported", "官方公告证实")
+        claim = ledger.view()["claims"][0]
+        self.assertEqual(claim["quotes"], {"S1": "small-batch production is planned for 2027"})
+        self.assertEqual(claim["note"], "官方公告证实")
+        self.assertEqual(claim["sources"], [{"id": "S1", "url": "https://a.com/1", "title": "A 站",
+                                             "published": "2026-09-30"}])
+
+    def test_claims_without_quotes_get_empty_dict(self):
+        ledger = Ledger.load(self.ws)
+        ledger.add_claim("无引语的旧声明", "https://a.com/1")
+        claim = ledger.view()["claims"][0]
+        self.assertEqual((claim["quotes"], claim["note"]), ({}, ""))
+
+    def test_contradiction_sides_carry_quotes_and_note(self):
+        x1 = build_ledger(self.ws).view()["contradictions"][0]
+        self.assertEqual({k for c in x1["claims"] for k in c}, {"id", "text", "status", "sources", "quotes", "note"})
 
 
 class LedgerApiTests(unittest.TestCase):

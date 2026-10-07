@@ -100,6 +100,12 @@ cat-deep-research/
 ├── requirements.txt         # Python 依赖
 ├── settings.example.json    # 配置模板
 │
+├── orchestration/           # 编排器的分阶段实现（ResearchOrchestrator 由这几部分组成）
+│   ├── base.py              # 基础设施：智能体初始化、进度事件、阶段间检查点（停止 / 暂停 / 用户消息）
+│   ├── phases.py            # 阶段 1–5：澄清落盘、规划、网络研究、来源验证、声明台账、分析、初稿
+│   ├── improve.py           # 阶段 6：评审与改进循环
+│   └── finish.py            # 阶段 7–8：选定终稿、置信度报告、报告附录与用量汇总
+│
 ├── llm/                     # 统一 LLM 调用层（按模型路由到 Claude / OpenAI / 智谱）
 │   ├── client.py            # 对外接口：同步/并行调用、超时与重试、本地 schema 校验
 │   ├── models.py            # 模型注册表（能力表：价格、推理强度、联网与结构化方式、并发上限）
@@ -123,6 +129,7 @@ cat-deep-research/
 ├── research/                # 纯逻辑模块（不调用 LLM）
 │   ├── ledger.py            # 声明台账与引用检查规则
 │   ├── loop_policy.py       # 改进循环停止条件、最优稿棘轮与最终稿选择
+│   ├── directives.py        # 研究中途的用户补充要求：按批累积，注入研究员 / 事实核查员 / 分析师 / 写作者的提示词
 │   └── confidence.py        # 综合置信度加权计算
 │
 ├── api/                     # FastAPI Web 服务
@@ -265,6 +272,7 @@ workspace/session_20250322_143022/
 | `GET` | `/api/sessions` | 获取历史研究会话列表 |
 | `GET` | `/api/sessions/{id}/report` | 获取会话最终报告 |
 | `GET` | `/api/sessions/{id}/plan` | 获取会话研究计划 |
+| `GET` | `/api/sessions/{id}/reviews` | 每轮评审：7 维评分、平均分、优点、关键问题、下一版要改的点 |
 | `GET` | `/api/sessions/{id}/phases` | 获取会话各阶段内容 |
 | `GET` | `/api/sessions/{id}/checkpoints` | 列出已完成阶段的检查点与默认续跑起点 |
 | `POST` | `/api/sessions/{id}/replay` | 从指定阶段重放（`{"from_phase": "improve"}`；省略则从断点续跑） |
@@ -560,6 +568,7 @@ After running `python run_api.py`:
 | `GET` | `/api/sessions` | List all research sessions |
 | `GET` | `/api/sessions/{id}/report` | Get session final report |
 | `GET` | `/api/sessions/{id}/plan` | Get session research plan |
+| `GET` | `/api/sessions/{id}/reviews` | Per-round reviews: 7 dimension scores, average, strengths, critical issues, priority improvements |
 | `GET` | `/api/sessions/{id}/phases` | Get all phase outputs for a session |
 | `GET` | `/api/sessions/{id}/checkpoints` | List completed-phase checkpoints and the default resume point |
 | `POST` | `/api/sessions/{id}/replay` | Replay from a phase (`{"from_phase": "improve"}`; omit to resume) |
