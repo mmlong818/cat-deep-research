@@ -115,12 +115,14 @@ class WriterAgent(LLMAgent):
 
     def write_draft(self, workspace: str, question: str, draft_num: int = 0, review_file: str | None = None,
                     base_draft: int | None = None, citation_issues: str = "",
-                    language: str = "zh", key_entities: list | None = None) -> str:
+                    language: str = "zh", key_entities: list | None = None,
+                    validation_notes: str = "") -> str:
         """写初稿（draft_num=0）或基于 base_draft（默认上一版）与评审意见改进，写入 draft_N.md。
 
         改进时同样提供全部研究材料与最新声明台账，使补充研究能进入报告；
         citation_issues 为上一版的引用违规清单（必须修正）；language 为报告语言（zh/en）；
-        key_entities 为研究计划指定的必须覆盖主体（逐一覆盖）。失败抛 LLMError。
+        key_entities 为研究计划指定的必须覆盖主体（逐一覆盖）；
+        validation_notes 为结论验证员对最优稿的意见（已渲染成一节，仅改进时使用，评审意见优先）。失败抛 LLMError。
         """
         output_file = os.path.join(workspace, "06_drafts", f"draft_{draft_num}.md")
         entities = _entities_block(key_entities)
@@ -130,7 +132,7 @@ class WriterAgent(LLMAgent):
         else:
             base = draft_num - 1 if base_draft is None else base_draft
             task = _improve_task(workspace, question, draft_num, base, review_file, citation_issues, language,
-                                 entities)
+                                 entities, validation_notes)
         self.ask_text(task, output_file)
         return output_file
 
@@ -143,9 +145,12 @@ def _materials(workspace: str) -> str:
 
 
 def _improve_task(workspace: str, question: str, draft_num: int, base: int,
-                  review_file: str | None, citation_issues: str, language: str, entities: str = "") -> str:
+                  review_file: str | None, citation_issues: str, language: str, entities: str = "",
+                  validation_notes: str = "") -> str:
     prev = body_of(read_text(os.path.join(workspace, "06_drafts", f"draft_{base}.md")))
     issues = f"\n\n## 上一版的引用问题（必须全部修正）\n{citation_issues}" if citation_issues else ""
+    if validation_notes:
+        issues += f"\n\n{validation_notes}"
     return f"""请根据评审意见改进研究报告（基于第 {base} 版，生成第 {draft_num} 版）。
 
 ## 研究问题

@@ -63,7 +63,7 @@ class FakeAgents:
         write_text_atomic(os.path.join(ws, "05_analysis.md"), "分析")
 
     def write_draft(self, ws, q, draft_num=0, review_file=None, base_draft=None, citation_issues="",
-                    language="zh", key_entities=None):
+                    language="zh", key_entities=None, validation_notes=""):
         self.writer_entities.append(key_entities)
         self.writes.append((draft_num, base_draft, review_file))
         self.citation_issues.append(citation_issues)

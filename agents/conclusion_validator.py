@@ -120,6 +120,31 @@ class ConclusionValidatorAgent(LLMAgent):
         return self.ask(prompt, output_file, finalize), output_file
 
 
+_FEEDBACK_GUIDE = ("优先级：以上文的评审意见为主，本节仅作补充；"
+                   "两者冲突时听评审员的，同时尽量照顾本节指出的证据与局限性问题。"
+                   "本节只指出问题与改法，其中出现的事实与数据不能当作证据，引用仍须来自声明台账；"
+                   "本节同样只供修改参考，不要在报告中说明改了什么。")
+
+
+def format_feedback(cv: dict | None) -> str:
+    """把验证意见（改进指示、缺口、逻辑问题）渲染成写作者改写提示词里的一节；没有验证结果或没有内容时为空串。
+    missing_perspectives 不放进去：它没有重要性分级，与 gaps 重叠，且容易让写作者凭空补没有来源的观点。"""
+    if not cv:
+        return ""
+    parts = []
+    instructions = (cv.get("improvement_instructions") or "").strip()
+    if instructions:
+        parts.append(f"### 改进指示\n{instructions}")
+    if cv.get("gaps"):
+        lines = "\n".join(f"- [{g['importance']}] {g['gap']}（建议：{g['suggestion']}）" for g in cv["gaps"])
+        parts.append(f"### 缺口\n{lines}")
+    if cv.get("logic_issues"):
+        parts.append("### 逻辑问题\n" + "\n".join(f"- {i}" for i in cv["logic_issues"]))
+    if not parts:
+        return ""
+    return f"## 结论验证员的意见（补充参考）\n{_FEEDBACK_GUIDE}\n\n" + "\n\n".join(parts)
+
+
 def with_confidence(data: dict, source_verification: dict | None, fact_check: dict | None) -> dict:
     """补上确定性字段：平均分与综合置信度（缺失部分剔除后归一化，见 research.confidence）。"""
     vals = [min(max(float(data["validation_scores"][k]), 0.0), 10.0) for k in SCORE_KEYS]

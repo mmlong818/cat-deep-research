@@ -2,6 +2,7 @@
 停止条件与最优稿棘轮见 research.loop_policy，即时询问见 research.loop_ask。"""
 import os
 
+from agents.conclusion_validator import format_feedback
 from agents.llm_agent import read_text
 from agents.planner import key_entities_of
 from orchestration.base import _pct
@@ -60,7 +61,7 @@ class ImproveLoopMixin(PhasesMixin):
             if supplements < max_supplements and review["additional_research_needed"]:
                 supplements += 1
                 self._supplement_and_reconcile(plan, _to_queries(review["additional_research_needed"]), cycle)
-            next_draft = self._rewrite(q, state, entities)
+            next_draft = self._rewrite(q, state, entities, validations.get(state.best_draft))
             if next_draft is None:
                 self._emit("loop_stop", {"cycle": cycle, "reason": "改进写作失败"})
                 break
@@ -112,14 +113,16 @@ class ImproveLoopMixin(PhasesMixin):
         self._log(f"结论验证完成: {cv['overall_verdict']}，平均分 {cv['average_score']:.1f}")
         return cv
 
-    def _rewrite(self, q: str, state: LoopState, key_entities: list) -> int | None:
-        """基于最优稿与其评审意见写新一版（编号单调递增）；失败返回 None。"""
+    def _rewrite(self, q: str, state: LoopState, key_entities: list, cv: dict | None = None) -> int | None:
+        """基于最优稿与其评审意见写新一版（编号单调递增）；失败返回 None。
+        cv 为最优稿那一版的结论验证结果，其意见作为评审意见之外的补充一并交给写作者（没有时不附）。"""
         new = state.next_draft()
         print(f"\n✍️  改进报告：基于第 {state.best_draft} 版生成第 {new} 版", flush=True)
         issues = format_violations(self._citations.get(state.best_draft, {}).get("violations", []))
         out = self._soft("改进写作", self.writer.write_draft, self._ws, q, draft_num=new,
                          review_file=state.best_review_file, base_draft=state.best_draft,
-                         citation_issues=issues, language=self._language, key_entities=key_entities)
+                         citation_issues=issues, language=self._language, key_entities=key_entities,
+                         validation_notes=format_feedback(cv))
         if out is None:
             print(f"  [错误] 改进写作失败，结束改进循环，保留最优第 {state.best_draft} 版", flush=True)
             return None

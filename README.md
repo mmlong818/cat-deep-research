@@ -64,7 +64,7 @@
            ├─→ ✔️ ConclusionValidator  结论验证（5 项评分）
            ├─→ 🏁 停止判断            评审 ≥ 8.0 且结论 ≥ 7.5 且无引用违规与未决矛盾 / 连续 1 轮无增益 / 达到上限
            ├─→ 🔍 Researcher          补充研究（仅前 3 轮，评审要求时；新声明随即对账、裁决）
-           └─→ ✍️ Writer              基于最优稿改写，并修正引用违规
+           └─→ ✍️ Writer              基于最优稿改写，修正引用违规，并参考该稿的结论验证意见
    │
    ▼
 最终研究报告（09_final.md，取无引用违规的最优稿）+ 置信度报告（08_verification/confidence_report.json）
@@ -81,11 +81,11 @@
 | 🔍 **Researcher**（研究员） | 使用 Claude Code 内置的 WebSearch / WebFetch 执行网络搜索与网页抓取，查询按 3 个一组、最多 4 组并行执行，聚合多源原始数据 |
 | 🔎 **SourceVerifier**（来源验证员） | 对每个来源打 Tier 1–4 标签并给出 0–100 分域名评分，识别不可靠来源 |
 | 🧐 **Analyst**（分析师） | 整合原始资料，提炼关键发现，进行因果、趋势、对比分析 |
-| ✍️ **Writer**（写作者） | 撰写结构化研究报告，根据评审反馈多轮迭代优化 |
+| ✍️ **Writer**（写作者） | 撰写结构化研究报告，根据评审反馈多轮迭代优化；改写时另收到结论验证员对最优稿的意见（改进指示、缺口、逻辑问题），以评审意见为主、验证意见为补充 |
 | 🎯 **Critic**（评审员） | 从完整性、准确性、深度、清晰性等 7 个维度对报告打分，并对照用户的研究问题、委托内容与中途补充指令检查报告是否满足要求 |
 | 📒 **Reconciler**（对账员） | 比对新旧声明，合并重复（含中英文同义表述），找出互相矛盾的声明对 |
 | 🔬 **FactChecker**（事实核查员） | 逐处联网裁决矛盾（胜出方 / 两方都不可靠），独立核实最多 8 条关键数字类声明，给出 0.0–1.0 置信度 |
-| ✔️ **ConclusionValidator**（结论验证员） | 验证结论的逻辑严密性、全面性与实用价值（5 项评分），并对照用户的研究问题、委托内容与中途补充指令判断结论是否回应了用户要求（遵循要求所作的取舍不扣「覆盖全面性」分，违背的写进 gaps / logic_issues） |
+| ✔️ **ConclusionValidator**（结论验证员） | 验证结论的逻辑严密性、全面性与实用价值（5 项评分），并对照用户的研究问题、委托内容与中途补充指令判断结论是否回应了用户要求（遵循要求所作的取舍不扣「覆盖全面性」分，违背的写进 gaps / logic_issues）；其改进指示、gaps 与 logic_issues 在改写时交给写作者 |
 
 ---
 
@@ -421,7 +421,7 @@ User Query
            ├─→ ✔️ ConclusionValidator  Conclusion validation (5 scores)
            ├─→ 🏁 Stop check          review ≥ 8.0 & conclusion ≥ 7.5 & no citation violations or open contradictions / 1 round without gain / max rounds
            ├─→ 🔍 Researcher          Supplemental research (rounds 1–3, when requested; new claims reconciled and adjudicated right away)
-           └─→ ✍️ Writer              Rewrite from the best draft, fixing citation violations
+           └─→ ✍️ Writer              Rewrite from the best draft, fixing citation violations and taking that draft's validation notes into account
    │
    ▼
 Final Report (09_final.md, best draft without citation violations) + Confidence Report (08_verification/confidence_report.json)
@@ -438,11 +438,11 @@ Final Report (09_final.md, best draft without citation violations) + Confidence 
 | 🔍 **Researcher** | Executes web searches and page scraping via Claude Code's built-in WebSearch / WebFetch, running query groups of 3 with up to 4 groups in parallel, aggregates raw multi-source data |
 | 🔎 **SourceVerifier** | Assigns Tier 1–4 labels and 0–100 domain scores to each source; flags unreliable ones |
 | 🧐 **Analyst** | Synthesizes research into key findings; causal, trend, and comparative analysis |
-| ✍️ **Writer** | Writes structured research reports; iterates based on review feedback |
+| ✍️ **Writer** | Writes structured research reports; iterates based on review feedback; on rewrites it also gets the conclusion validator's notes on the best draft (instructions, gaps, logic issues), with the critic's review taking priority |
 | 🎯 **Critic** | Reviews on 7 dimensions: completeness, accuracy, depth, clarity, usefulness, sources, simplicity; also checks the report against the user's question, confirmed brief and mid-run instructions |
 | 📒 **Reconciler** | Compares new and existing claims, merges duplicates (including zh/en wording), finds contradicting claim pairs |
 | 🔬 **FactChecker** | Adjudicates each contradiction on the web (one side wins / neither is reliable) and independently verifies up to 8 key numeric claims (confidence 0.0–1.0) |
-| ✔️ **ConclusionValidator** | Validates logical rigor, completeness, and practical value of conclusions (5 scores); also judges whether the conclusions answer the user's question, confirmed brief and mid-run instructions (trade-offs made to follow them are not penalised as incomplete; violations go into gaps / logic_issues) |
+| ✔️ **ConclusionValidator** | Validates logical rigor, completeness, and practical value of conclusions (5 scores); also judges whether the conclusions answer the user's question, confirmed brief and mid-run instructions (trade-offs made to follow them are not penalised as incomplete; violations go into gaps / logic_issues); its instructions, gaps and logic issues are handed to the writer on rewrites |
 
 ---
 
